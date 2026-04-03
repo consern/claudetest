@@ -9,6 +9,7 @@ import type { ChatMessage } from '../types/message.js';
 import type { ToolApprovalRequest } from '../types/tool.js';
 import type { LoopTelemetry, FeatureDevPhase } from '../types/agent.js';
 import type { FeatureDevState } from '../types/workflow.js';
+import type { TaskRecord, WorkbenchPage, WorkbenchUiState } from '../types/workbench.js';
 import { ChatView } from '../ui/ChatView.js';
 import { InputBox } from '../ui/InputBox.js';
 import { StatusBar } from '../ui/StatusBar.js';
@@ -19,6 +20,11 @@ import { PhaseTracker } from '../ui/PhaseTracker.js';
 import { SubagentPanel } from '../ui/SubagentPanel.js';
 import { CurrentActionView } from '../ui/CurrentActionView.js';
 import { DecisionBucketsView } from '../ui/DecisionBucketsView.js';
+import { TaskSidebar } from '../ui/TaskSidebar.js';
+import { ImplementationStepsPanel } from '../ui/ImplementationStepsPanel.js';
+import { AuditTimelineView } from '../ui/AuditTimelineView.js';
+import { ReviewReworkWorkspace } from '../ui/ReviewReworkWorkspace.js';
+import { HomeComposer } from '../ui/HomeComposer.js';
 import { runAgentLoop } from '../agent/loop.js';
 import { saveSession } from '../session/store.js';
 import { appendHistory } from '../session/history.js';
@@ -61,6 +67,7 @@ export function App(): React.JSX.Element {
   const [phaseStatus, setPhaseStatus] = useState<
     Partial<Record<FeatureDevPhase, 'pending' | 'active' | 'done' | 'blocked'>>
   >({});
+  const [tasks, setTasks] = useState<TaskRecord[]>([]);
 
   const approval = useMemo(
     () =>
@@ -95,26 +102,26 @@ export function App(): React.JSX.Element {
     });
   }
 
-  useInput((key, raw) => {
+  useInput((inputKey, key) => {
     void (async () => {
-      if (raw.ctrl && key === 'c') {
+      if (key.ctrl && inputKey.toLowerCase() === 'c') {
         exit();
         return;
       }
 
       if (pendingApproval) {
-        if (key.toLowerCase() === 'y') {
+        if (inputKey.toLowerCase() === 'y') {
           pendingApproval.resolve(true);
           setPendingApproval(null);
         }
-        if (key.toLowerCase() === 'n') {
+        if (inputKey.toLowerCase() === 'n') {
           pendingApproval.resolve(false);
           setPendingApproval(null);
         }
         return;
       }
 
-      if (key === 'return') {
+      if (key.return) {
         const text = input.trim();
         setInput('');
         if (!text) {
@@ -122,6 +129,15 @@ export function App(): React.JSX.Element {
         }
 
         const userMsg = makeMessage('user', text);
+        const taskId = randomUUID();
+        const task: TaskRecord = {
+          id: taskId,
+          title: text,
+          mode: text.startsWith('/feature') ? 'feature-dev' : 'normal',
+          status: 'running',
+          updatedAt: new Date().toISOString()
+        };
+        setTasks((prev) => [task, ...prev].slice(0, 20));
         const nextHistory = appendHistory(messages, userMsg);
         setMessages(nextHistory);
         setStreaming(true);
@@ -136,6 +152,13 @@ export function App(): React.JSX.Element {
             const assistant = makeMessage('assistant', commandOut);
             const withAssistant = appendHistory(nextHistory, assistant);
             setMessages(withAssistant);
+            setTasks((prev) =>
+              prev.map((row) =>
+                row.id === taskId
+                  ? { ...row, status: 'completed', updatedAt: new Date().toISOString() }
+                  : row
+              )
+            );
             await persist(withAssistant);
             return;
           }
@@ -164,12 +187,33 @@ export function App(): React.JSX.Element {
           if (result.telemetry) {
             setTelemetry(result.telemetry);
           }
+          setTasks((prev) =>
+            prev.map((row) => {
+              if (row.id !== taskId) {
+                return row;
+              }
+              const status: TaskRecord['status'] =
+                result.telemetry?.blockedReason
+                  ? 'blocked'
+                  : result.workflowState?.findingLifecycle.some((f) => f.status === 'in_rework')
+                    ? 'reviewing'
+                    : 'completed';
+              return { ...row, status, mode: result.telemetry?.activeMode ?? row.mode, updatedAt: new Date().toISOString() };
+            })
+          );
           await persist(withAssistant);
         } catch (error) {
           const errText = error instanceof Error ? error.message : String(error);
           const assistant = makeMessage('assistant', `Execution failed: ${errText}`);
           const withAssistant = appendHistory(nextHistory, assistant);
           setMessages(withAssistant);
+          setTasks((prev) =>
+            prev.map((row) =>
+              row.id === taskId
+                ? { ...row, status: 'failed', updatedAt: new Date().toISOString() }
+                : row
+            )
+          );
           setTelemetry((prev) => ({ ...prev, lastError: errText }));
           await persist(withAssistant);
         } finally {
@@ -180,13 +224,13 @@ export function App(): React.JSX.Element {
         return;
       }
 
-      if (key === 'backspace' || key === 'delete') {
+      if (key.backspace || key.delete) {
         setInput((v) => v.slice(0, -1));
         return;
       }
 
-      if (!raw.ctrl && !raw.meta && key.length === 1) {
-        setInput((v) => v + key);
+      if (!key.ctrl && !key.meta && inputKey.length > 0) {
+        setInput((v) => v + inputKey);
       }
     })();
   });
@@ -204,9 +248,19 @@ export function App(): React.JSX.Element {
         ]
       : messages;
 
-  const isIdle = !streaming && messages.length === 0 && !workflowState;
+  const uiState: WorkbenchUiState =
+    !streaming && messages.length === 0 && !workflowState
+      ? 'idle'
+      : workflowState?.findingLifecycle.some(
+            (item) => item.status === 'in_rework' || item.status === 'resolved' || item.status === 'open'
+          ) || telemetry.activeMode === 'review' || telemetry.activeMode === 'rework'
+        ? 'review-rework'
+        : 'execution';
+  const page: WorkbenchPage =
+    uiState === 'idle' ? 'Home' : uiState === 'review-rework' ? 'Reviews' : 'Tasks';
+  const inRework = Boolean(workflowState?.currentStepId?.startsWith('rework-'));
 
-  if (isIdle) {
+  if (uiState === 'idle') {
     return (
       <Box flexDirection='column'>
         <Text color='cyan'>Terminal Coding Client</Text>
@@ -217,9 +271,36 @@ export function App(): React.JSX.Element {
           sessionId={sessionId}
           streaming={streaming}
         />
-        <Text>Ready for coding tasks.</Text>
-        <Text dimColor>Try: /feature &lt;task&gt; | /review &lt;task&gt; | /read &lt;path&gt;</Text>
+        <Text dimColor>Pages: Home | Projects | Tasks | Sessions | Reviews | Automations | Settings</Text>
+        <HomeComposer
+          currentProject={cwd}
+          recentTasks={tasks.slice(0, 3).map((task) => task.title.slice(0, 20))}
+          recentSessions={[sessionId.slice(0, 8)]}
+          input={input}
+        />
         <InputBox value={input} disabled={pendingApproval !== null} />
+      </Box>
+    );
+  }
+
+  if (uiState === 'review-rework') {
+    return (
+      <Box flexDirection='column'>
+        <Text color='cyan'>Terminal Coding Client</Text>
+        <StatusBar
+          provider={provider.name}
+          model={env.MODEL_NAME}
+          cwd={cwd}
+          sessionId={sessionId}
+          streaming={streaming}
+        />
+        <Text dimColor>
+          Page: {page} | state={uiState}
+        </Text>
+        <ReviewReworkWorkspace workflowState={workflowState} />
+        <ToolEventView events={toolEvents} />
+        {pendingApproval ? <ConfirmDialog request={pendingApproval.request} /> : null}
+        <InputBox value={input} disabled={streaming || pendingApproval !== null} />
       </Box>
     );
   }
@@ -234,28 +315,41 @@ export function App(): React.JSX.Element {
         sessionId={sessionId}
         streaming={streaming}
       />
-      <PhaseTracker
-        currentPhase={telemetry.activePhase}
-        phaseStatus={phaseStatus}
-        blockedReason={telemetry.blockedReason}
-      />
-      <SubagentPanel activeSubagent={telemetry.activeSubagent} workflowState={workflowState} />
-      <CurrentActionView
-        activeMode={telemetry.activeMode}
-        round={telemetry.round}
-        maxIterations={telemetry.maxIterations}
-        activePhase={telemetry.activePhase}
-        activeTool={telemetry.activeTool}
-        activeSubagent={telemetry.activeSubagent}
-        activeImplementationStep={telemetry.activeImplementationStep}
-        activeStepExecutionSummary={telemetry.activeStepExecutionSummary}
-        lastWriteResult={telemetry.lastWriteResult}
-        lastReviewDecision={telemetry.lastReviewDecision}
-        blockedReason={telemetry.blockedReason}
-      />
-      <DecisionBucketsView workflowState={workflowState} />
-      <ChatView messages={displayMessages} />
-      <ToolEventView events={toolEvents} />
+      <Text dimColor>
+        Page: {page} | state={uiState}
+      </Text>
+      <Box>
+        <TaskSidebar projectName={cwd} sessionId={sessionId} tasks={tasks} />
+        <Box flexDirection='column' marginLeft={1} width={70}>
+          <ChatView messages={displayMessages} />
+          <ToolEventView events={toolEvents} />
+          <AuditTimelineView workflowState={workflowState} />
+        </Box>
+        <Box flexDirection='column' marginLeft={1} width={58}>
+          <CurrentActionView
+            activeMode={telemetry.activeMode}
+            round={telemetry.round}
+            maxIterations={telemetry.maxIterations}
+            activePhase={telemetry.activePhase}
+            activeTool={telemetry.activeTool}
+            activeSubagent={telemetry.activeSubagent}
+            activeImplementationStep={telemetry.activeImplementationStep}
+            activeStepExecutionSummary={telemetry.activeStepExecutionSummary}
+            lastWriteResult={telemetry.lastWriteResult}
+            lastReviewDecision={telemetry.lastReviewDecision}
+            blockedReason={telemetry.blockedReason}
+          />
+          <PhaseTracker
+            currentPhase={telemetry.activePhase}
+            phaseStatus={phaseStatus}
+            blockedReason={telemetry.blockedReason}
+            inRework={inRework}
+          />
+          <ImplementationStepsPanel workflowState={workflowState} />
+          <SubagentPanel activeSubagent={telemetry.activeSubagent} workflowState={workflowState} />
+          <DecisionBucketsView workflowState={workflowState} />
+        </Box>
+      </Box>
       {pendingApproval ? <ConfirmDialog request={pendingApproval.request} /> : null}
       <ReviewPanel lines={['Prioritize high-signal findings.', 'Prefer minimal, reviewable diffs.']} />
       <InputBox value={input} disabled={streaming || pendingApproval !== null} />

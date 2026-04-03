@@ -6,6 +6,7 @@ export interface PhaseTrackerProps {
   currentPhase?: FeatureDevPhase;
   phaseStatus?: Partial<Record<FeatureDevPhase, 'pending' | 'active' | 'done' | 'blocked'>>;
   blockedReason?: string;
+  inRework?: boolean;
 }
 
 const phases: FeatureDevPhase[] = [
@@ -35,18 +36,18 @@ function stylePhase(phase: FeatureDevPhase, status: string | undefined, currentP
 export function PhaseTracker({
   currentPhase,
   phaseStatus,
-  blockedReason
+  blockedReason,
+  inRework
 }: PhaseTrackerProps): React.JSX.Element {
+  const labels = [
+    ...phases.map((phase) => stylePhase(phase, phaseStatus?.[phase], currentPhase)),
+    inRework ? '[rework:active]' : 'rework:pending'
+  ];
   return (
     <Box flexDirection='column'>
       <Text color='cyan'>Phase Tracker</Text>
-      <Text>
-        {phases
-          .map((phase) => stylePhase(phase, phaseStatus?.[phase], currentPhase))
-          .join(' -> ')}
-      </Text>
+      <Text>{labels.join(' -> ')}</Text>
       {blockedReason ? <Text color='red'>Blocked Reason: {blockedReason}</Text> : null}
     </Box>
   );
 }
-
