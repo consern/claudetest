@@ -19,6 +19,11 @@
 - `feature-dev` 阶段化流程骨架
 - `code-explorer` / `code-architect` / `code-reviewer` 子代理骨架
 - PreToolUse 风险规则（高风险路径/代码模式）
+- 多轮 tool-use agent loop（工具调用结果回注继续推理）
+- 工具标准化 schema + 参数校验（zod）
+- workspace sandbox（读写与 shell 默认限制在 `WORKSPACE_ROOT`）
+- shell 风险分级（safe/review/dangerous）
+- provider 流式事件接入与终端增量渲染
 
 ## 安装与运行
 ```bash
@@ -46,6 +51,7 @@ pnpm dev
 - `/write E:/code/claudetest/tmp.txt::hello`
 - `/shell dir`
 - `/feature add workspace-aware planner`
+- 也可直接自然语言：例如“先搜索 toolRegistry，再读 loop.ts，最后给出重构建议”
 
 ## Roadmap
 1. 真正的多 provider streaming

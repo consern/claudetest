@@ -1,4 +1,18 @@
-﻿export async function codeExplorerTask(task: string): Promise<string> {
-  return `code-explorer: 已针对任务进行入口与关键文件梳理。任务=${task}`;
+import type { ModelProvider } from '../../providers/base.js';
+import { codeExplorerPrompt } from '../prompts/codeExplorer.js';
+import { callSubagent, type SubagentResult } from './shared.js';
+
+export async function codeExplorerTask(input: {
+  provider: ModelProvider;
+  model: string;
+  task: string;
+}): Promise<SubagentResult> {
+  return callSubagent({
+    role: 'code-explorer',
+    provider: input.provider,
+    model: input.model,
+    prompt: codeExplorerPrompt,
+    task: input.task
+  });
 }
 

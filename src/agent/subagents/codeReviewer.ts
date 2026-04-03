@@ -1,4 +1,18 @@
-﻿export async function codeReviewerTask(task: string): Promise<string> {
-  return `code-reviewer: 已完成高置信度检查。任务=${task}`;
+import type { ModelProvider } from '../../providers/base.js';
+import { codeReviewerPrompt } from '../prompts/codeReviewer.js';
+import { callSubagent, type SubagentResult } from './shared.js';
+
+export async function codeReviewerTask(input: {
+  provider: ModelProvider;
+  model: string;
+  task: string;
+}): Promise<SubagentResult> {
+  return callSubagent({
+    role: 'code-reviewer',
+    provider: input.provider,
+    model: input.model,
+    prompt: codeReviewerPrompt,
+    task: input.task
+  });
 }
 

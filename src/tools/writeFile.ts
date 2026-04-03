@@ -1,29 +1,26 @@
-﻿import { readFile, writeFile } from 'node:fs/promises';
-import type { ToolContext } from './types.js';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import type { ToolContext, ToolExecutionResult } from './types.js';
 import { previewDiffTool } from './previewDiff.js';
 import { runPreToolUseChecks } from '../hooks/preToolUse.js';
+import { resolvePathWithinWorkspace } from './sandbox.js';
 
 export interface WriteFileInput {
   filePath: string;
   newContent: string;
 }
 
-export interface WriteFileOutput {
-  filePath: string;
-  wrote: boolean;
-  diff: string;
-}
-
 export async function writeFileTool(
   input: WriteFileInput,
   ctx: ToolContext
-): Promise<WriteFileOutput> {
+): Promise<ToolExecutionResult> {
   if (!ctx.writeEnabled) {
-    return { filePath: input.filePath, wrote: false, diff: 'WRITE_ENABLED=false' };
+    return { ok: false, summary: '写入已禁用', error: 'WRITE_ENABLED=false' };
   }
 
-  const oldContent = await readFile(input.filePath, 'utf8').catch(() => '');
-  const check = runPreToolUseChecks({ filePath: input.filePath, newContent: input.newContent });
+  const safePath = resolvePathWithinWorkspace(input.filePath, ctx.workspaceRoot);
+  const oldContent = await readFile(safePath, 'utf8').catch(() => '');
+  const check = runPreToolUseChecks({ filePath: safePath, newContent: input.newContent });
 
   if (!check.ok) {
     const approvedRisk = await ctx.approval.requestApproval({
@@ -33,27 +30,32 @@ export async function writeFileTool(
     });
 
     if (!approvedRisk) {
-      return { filePath: input.filePath, wrote: false, diff: check.reason };
+      return { ok: false, summary: '已拒绝风险写入', error: check.reason };
     }
   }
 
   const diff = previewDiffTool({
     oldContent,
     newContent: input.newContent,
-    filePath: input.filePath
+    filePath: safePath
   }).unifiedDiff;
 
   const approved = await ctx.approval.requestApproval({
     kind: 'write',
-    title: `确认写入 ${input.filePath}`,
+    title: `确认写入 ${safePath}`,
     detail: diff
   });
 
   if (!approved) {
-    return { filePath: input.filePath, wrote: false, diff };
+    return { ok: false, summary: '用户取消写入', data: { diff } };
   }
 
-  await writeFile(input.filePath, input.newContent, 'utf8');
-  return { filePath: input.filePath, wrote: true, diff };
+  await mkdir(dirname(safePath), { recursive: true });
+  await writeFile(safePath, input.newContent, 'utf8');
+  return {
+    ok: true,
+    summary: `写入成功: ${safePath}`,
+    data: { filePath: safePath, diff }
+  };
 }
 

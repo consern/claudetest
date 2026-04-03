@@ -1,4 +1,18 @@
-﻿export async function codeArchitectTask(task: string): Promise<string> {
-  return `code-architect: 已生成单一路线架构建议。任务=${task}`;
+import type { ModelProvider } from '../../providers/base.js';
+import { codeArchitectPrompt } from '../prompts/codeArchitect.js';
+import { callSubagent, type SubagentResult } from './shared.js';
+
+export async function codeArchitectTask(input: {
+  provider: ModelProvider;
+  model: string;
+  task: string;
+}): Promise<SubagentResult> {
+  return callSubagent({
+    role: 'code-architect',
+    provider: input.provider,
+    model: input.model,
+    prompt: codeArchitectPrompt,
+    task: input.task
+  });
 }
 

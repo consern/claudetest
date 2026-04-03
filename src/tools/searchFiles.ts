@@ -1,10 +1,9 @@
-﻿import fg from 'fast-glob';
+import fg from 'fast-glob';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import type { ToolContext, ToolExecutionResult } from './types.js';
 
 export interface SearchFilesInput {
   query: string;
-  rootDir: string;
   glob?: string;
 }
 
@@ -13,10 +12,13 @@ export interface SearchMatch {
   snippet: string;
 }
 
-export async function searchFilesTool(input: SearchFilesInput): Promise<SearchMatch[]> {
+export async function searchFilesTool(
+  input: SearchFilesInput,
+  ctx: ToolContext
+): Promise<ToolExecutionResult> {
   const pattern = input.glob ?? '**/*.{ts,tsx,js,jsx,md,json,yml,yaml}';
   const files = await fg(pattern, {
-    cwd: input.rootDir,
+    cwd: ctx.workspaceRoot,
     absolute: true,
     dot: true,
     onlyFiles: true,
@@ -31,13 +33,20 @@ export async function searchFilesTool(input: SearchFilesInput): Promise<SearchMa
     if (idx >= 0) {
       const start = Math.max(0, idx - 80);
       const end = Math.min(content.length, idx + input.query.length + 80);
-      matches.push({ path: join(file), snippet: content.slice(start, end).replace(/\s+/g, ' ') });
+      matches.push({
+        path: file,
+        snippet: content.slice(start, end).replace(/\s+/g, ' ')
+      });
     }
     if (matches.length >= 30) {
       break;
     }
   }
 
-  return matches;
+  return {
+    ok: true,
+    summary: `找到 ${matches.length} 条匹配`,
+    data: matches
+  };
 }
 

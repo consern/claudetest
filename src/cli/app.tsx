@@ -1,4 +1,4 @@
-﻿import 'dotenv/config';
+import 'dotenv/config';
 import React, { useMemo, useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import { randomUUID } from 'node:crypto';
@@ -45,6 +45,7 @@ export function App(): React.JSX.Element {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [pendingAssistant, setPendingAssistant] = useState('');
 
   const approval = useMemo(
     () =>
@@ -109,6 +110,8 @@ export function App(): React.JSX.Element {
         const nextHistory = appendHistory(messages, userMsg);
         setMessages(nextHistory);
         setStreaming(true);
+        setPendingAssistant('');
+        setToolEvents([]);
 
         try {
           const commandOut = await runCommand(text, toolContext);
@@ -126,13 +129,20 @@ export function App(): React.JSX.Element {
             provider,
             model: env.MODEL_NAME,
             toolContext,
-            cwd
+            cwd,
+            maxIterations: 8,
+            onTextChunk: (chunk) => {
+              setPendingAssistant((prev) => prev + chunk);
+            },
+            onToolEvent: (event) => {
+              setToolEvents((prev) => [...prev, event]);
+            }
           });
 
           const assistant = makeMessage('assistant', result.text);
           const withAssistant = appendHistory(nextHistory, assistant);
           setMessages(withAssistant);
-          setToolEvents(result.toolEvents);
+          setToolEvents((prev) => [...prev, ...result.toolEvents]);
           await persist(withAssistant);
         } catch (error) {
           const errText = error instanceof Error ? error.message : String(error);
@@ -141,6 +151,7 @@ export function App(): React.JSX.Element {
           setMessages(withAssistant);
           await persist(withAssistant);
         } finally {
+          setPendingAssistant('');
           setStreaming(false);
         }
 
@@ -158,6 +169,11 @@ export function App(): React.JSX.Element {
     })();
   });
 
+  const displayMessages =
+    streaming && pendingAssistant
+      ? [...messages, { id: 'pending', role: 'assistant' as const, content: pendingAssistant, createdAt: new Date().toISOString() }]
+      : messages;
+
   return (
     <Box flexDirection='column'>
       <Text color='cyan'>Terminal Coding Client</Text>
@@ -168,13 +184,13 @@ export function App(): React.JSX.Element {
         sessionId={sessionId}
         streaming={streaming}
       />
-      <ChatView messages={messages} />
+      <ChatView messages={displayMessages} />
       <ToolEventView events={toolEvents} />
       {pendingApproval ? <ConfirmDialog request={pendingApproval.request} /> : null}
       <ReviewPanel lines={['高精度优先，减少误报。', '优先最小可审查变更。']} />
       <InputBox value={input} disabled={streaming || pendingApproval !== null} />
       <Text dimColor>
-        命令: /read {'<path>'} | /search {'<query>'} | /write {'<path>::<content>'} | /shell {'<cmd>'} | /feature {'<task>'}
+        命令: /write {'<path>::<content>'}；自然语言请求会走 tool-use agent loop。
       </Text>
     </Box>
   );
