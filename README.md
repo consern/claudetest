@@ -24,12 +24,16 @@
 - workspace sandbox（读写与 shell 默认限制在 `WORKSPACE_ROOT`）
 - shell 风险分级（safe/review/dangerous）
 - provider 流式事件接入与终端增量渲染
+- feature-dev 状态控制（`FeatureDevState`、审批闸门、review 分桶）
+- 终端过程可视化（phase/subagent/current action/decision buckets）
+- 回归测试：sandbox、tool schema、approval、loop smoke、feature workflow
 
 ## 安装与运行
 ```bash
 pnpm install
 cp .env.example .env
 pnpm dev
+pnpm test
 ```
 
 ## 环境变量

@@ -4,6 +4,8 @@ import type { ChatMessage } from '../types/message.js';
 import type { ToolContext } from '../tools/types.js';
 import type { AgentMessage } from '../types/agentMessages.js';
 import type { ProviderResponse } from '../types/provider.js';
+import type { AgentTelemetry } from '../types/agent.js';
+import type { FeatureDevState } from '../types/workflow.js';
 import { createPlan } from './planner.js';
 import { runFeatureDevWorkflow } from './workflow.js';
 import { mainSystemPrompt } from './systemPrompt.js';
@@ -12,6 +14,8 @@ import { executeToolByName, listToolDefinitions } from '../tools/toolRegistry.js
 export interface AgentResult {
   text: string;
   toolEvents: string[];
+  telemetry?: AgentTelemetry;
+  workflowState?: FeatureDevState;
 }
 
 function toAgentMessage(msg: ChatMessage): AgentMessage {
@@ -107,19 +111,48 @@ export async function runAgentLoop(input: {
   maxIterations?: number;
   onTextChunk?: (chunk: string) => void;
   onToolEvent?: (event: string) => void;
+  onTelemetry?: (telemetry: AgentTelemetry) => void;
 }): Promise<AgentResult> {
   const plan = createPlan(input.userText);
   const toolEvents: string[] = [];
+  const maxIterations = input.maxIterations ?? 6;
 
   if (plan.mode === 'feature-dev') {
-    const phases = await runFeatureDevWorkflow({
+    const workflow = await runFeatureDevWorkflow({
       task: input.userText,
       provider: input.provider,
-      model: input.model
+      model: input.model,
+      toolContext: input.toolContext,
+      onToolEvent: input.onToolEvent,
+      onPhase: (phase) => {
+        input.onTelemetry?.({
+          mode: 'feature-dev',
+          loopRound: 0,
+          maxIterations,
+          currentPhase: phase
+        });
+      },
+      onActiveSubagent: (name) => {
+        input.onTelemetry?.({
+          mode: 'feature-dev',
+          loopRound: 0,
+          maxIterations,
+          activeSubagent: name
+        });
+      }
     });
+
     return {
-      text: phases.map((p) => `[${p.phase}] ${p.note}`).join('\n\n'),
-      toolEvents
+      text: workflow.notes.map((p) => `[${p.phase}] ${p.note}`).join('\n\n'),
+      toolEvents,
+      workflowState: workflow.state,
+      telemetry: {
+        mode: 'feature-dev',
+        loopRound: workflow.phaseHistory.length,
+        maxIterations,
+        currentPhase: workflow.phaseHistory.at(-1),
+        activeSubagent: workflow.activeSubagentHistory.at(-1)
+      }
     };
   }
 
@@ -128,9 +161,13 @@ export async function runAgentLoop(input: {
     { role: 'user', content: input.userText }
   ];
 
-  const maxIterations = input.maxIterations ?? 6;
+  for (let round = 0; round < maxIterations; round += 1) {
+    input.onTelemetry?.({
+      mode: 'chat',
+      loopRound: round + 1,
+      maxIterations
+    });
 
-  for (let i = 0; i < maxIterations; i += 1) {
     const response = await modelStep({
       provider: input.provider,
       model: input.model,
@@ -141,9 +178,17 @@ export async function runAgentLoop(input: {
     });
 
     if (!response.toolCalls || response.toolCalls.length === 0) {
-      const finalText = response.text || '无可用输出。';
+      const finalText = response.text || 'No usable output.';
       conversation.push({ role: 'assistant', content: finalText });
-      return { text: finalText, toolEvents };
+      return {
+        text: finalText,
+        toolEvents,
+        telemetry: {
+          mode: 'chat',
+          loopRound: round + 1,
+          maxIterations
+        }
+      };
     }
 
     if (response.text) {
@@ -162,6 +207,12 @@ export async function runAgentLoop(input: {
       const start = `tool_call: ${toolCall.name}(${JSON.stringify(toolCall.args)})`;
       toolEvents.push(start);
       input.onToolEvent?.(start);
+      input.onTelemetry?.({
+        mode: 'chat',
+        loopRound: round + 1,
+        maxIterations,
+        currentToolCall: start
+      });
 
       const result = await executeToolByName(toolCall.name, toolCall.args, input.toolContext);
       conversation.push({
@@ -178,8 +229,13 @@ export async function runAgentLoop(input: {
   }
 
   return {
-    text: '已达到最大迭代次数，停止执行以避免死循环。',
-    toolEvents
+    text: 'Reached max iterations. Stop to prevent infinite loops.',
+    toolEvents,
+    telemetry: {
+      mode: 'chat',
+      loopRound: maxIterations,
+      maxIterations
+    }
   };
 }
 

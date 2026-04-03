@@ -7,12 +7,18 @@ import { envSchema } from '../config/env.js';
 import { createProvider } from '../providers/factory.js';
 import type { ChatMessage } from '../types/message.js';
 import type { ToolApprovalRequest } from '../types/tool.js';
+import type { AgentTelemetry } from '../types/agent.js';
+import type { FeatureDevState } from '../types/workflow.js';
 import { ChatView } from '../ui/ChatView.js';
 import { InputBox } from '../ui/InputBox.js';
 import { StatusBar } from '../ui/StatusBar.js';
 import { ConfirmDialog } from '../ui/ConfirmDialog.js';
 import { ToolEventView } from '../ui/ToolEventView.js';
 import { ReviewPanel } from '../ui/ReviewPanel.js';
+import { PhaseTracker } from '../ui/PhaseTracker.js';
+import { SubagentPanel } from '../ui/SubagentPanel.js';
+import { CurrentActionView } from '../ui/CurrentActionView.js';
+import { DecisionBucketsView } from '../ui/DecisionBucketsView.js';
 import { runAgentLoop } from '../agent/loop.js';
 import { saveSession } from '../session/store.js';
 import { appendHistory } from '../session/history.js';
@@ -46,6 +52,12 @@ export function App(): React.JSX.Element {
   const [streaming, setStreaming] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [pendingAssistant, setPendingAssistant] = useState('');
+  const [telemetry, setTelemetry] = useState<AgentTelemetry>({
+    mode: 'chat',
+    loopRound: 0,
+    maxIterations: 0
+  });
+  const [workflowState, setWorkflowState] = useState<FeatureDevState | undefined>(undefined);
 
   const approval = useMemo(
     () =>
@@ -112,6 +124,7 @@ export function App(): React.JSX.Element {
         setStreaming(true);
         setPendingAssistant('');
         setToolEvents([]);
+        setWorkflowState(undefined);
 
         try {
           const commandOut = await runCommand(text, toolContext);
@@ -136,6 +149,9 @@ export function App(): React.JSX.Element {
             },
             onToolEvent: (event) => {
               setToolEvents((prev) => [...prev, event]);
+            },
+            onTelemetry: (nextTelemetry) => {
+              setTelemetry(nextTelemetry);
             }
           });
 
@@ -143,10 +159,14 @@ export function App(): React.JSX.Element {
           const withAssistant = appendHistory(nextHistory, assistant);
           setMessages(withAssistant);
           setToolEvents((prev) => [...prev, ...result.toolEvents]);
+          setWorkflowState(result.workflowState);
+          if (result.telemetry) {
+            setTelemetry(result.telemetry);
+          }
           await persist(withAssistant);
         } catch (error) {
           const errText = error instanceof Error ? error.message : String(error);
-          const assistant = makeMessage('assistant', `执行失败: ${errText}`);
+          const assistant = makeMessage('assistant', `Execution failed: ${errText}`);
           const withAssistant = appendHistory(nextHistory, assistant);
           setMessages(withAssistant);
           await persist(withAssistant);
@@ -171,7 +191,15 @@ export function App(): React.JSX.Element {
 
   const displayMessages =
     streaming && pendingAssistant
-      ? [...messages, { id: 'pending', role: 'assistant' as const, content: pendingAssistant, createdAt: new Date().toISOString() }]
+      ? [
+          ...messages,
+          {
+            id: 'pending',
+            role: 'assistant' as const,
+            content: pendingAssistant,
+            createdAt: new Date().toISOString()
+          }
+        ]
       : messages;
 
   return (
@@ -184,13 +212,21 @@ export function App(): React.JSX.Element {
         sessionId={sessionId}
         streaming={streaming}
       />
+      <PhaseTracker currentPhase={telemetry.currentPhase} />
+      <SubagentPanel activeSubagent={telemetry.activeSubagent} />
+      <CurrentActionView
+        currentToolCall={telemetry.currentToolCall}
+        loopRound={telemetry.loopRound}
+        maxIterations={telemetry.maxIterations}
+      />
+      <DecisionBucketsView workflowState={workflowState} />
       <ChatView messages={displayMessages} />
       <ToolEventView events={toolEvents} />
       {pendingApproval ? <ConfirmDialog request={pendingApproval.request} /> : null}
-      <ReviewPanel lines={['高精度优先，减少误报。', '优先最小可审查变更。']} />
+      <ReviewPanel lines={['Prioritize high-signal findings.', 'Prefer minimal, reviewable diffs.']} />
       <InputBox value={input} disabled={streaming || pendingApproval !== null} />
       <Text dimColor>
-        命令: /write {'<path>::<content>'}；自然语言请求会走 tool-use agent loop。
+        Commands: /read &lt;path&gt; | /search &lt;query&gt; | /write &lt;path&gt;::&lt;content&gt; | /shell &lt;cmd&gt; | /feature &lt;task&gt;
       </Text>
     </Box>
   );

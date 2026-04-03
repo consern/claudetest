@@ -15,3 +15,12 @@ export interface AgentPlan {
   phases: FeatureDevPhase[];
 }
 
+export interface AgentTelemetry {
+  mode: AgentMode;
+  loopRound: number;
+  maxIterations: number;
+  currentPhase?: FeatureDevPhase;
+  activeSubagent?: string;
+  currentToolCall?: string;
+}
+
