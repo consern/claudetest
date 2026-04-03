@@ -121,6 +121,8 @@ export async function runAgentLoop(input: {
   const maxIterations = input.maxIterations ?? 6;
 
   if (mode === 'feature-dev') {
+    let lastWriteResult = '';
+    let lastReviewDecision = '';
     const workflow = await runFeatureDevWorkflow({
       task: input.userText,
       provider: input.provider,
@@ -159,6 +161,24 @@ export async function runAgentLoop(input: {
           lastError: reason,
           maxIterations
         });
+      },
+      onWriteResult: (summary) => {
+        lastWriteResult = summary;
+        input.onTelemetry?.({
+          round: 0,
+          activeMode: 'feature-dev',
+          lastWriteResult: summary,
+          maxIterations
+        });
+      },
+      onReviewDecision: (summary) => {
+        lastReviewDecision = summary;
+        input.onTelemetry?.({
+          round: 0,
+          activeMode: 'feature-dev',
+          lastReviewDecision: summary,
+          maxIterations
+        });
       }
     });
 
@@ -169,11 +189,15 @@ export async function runAgentLoop(input: {
       phaseStatus: workflow.phaseStatus,
       telemetry: {
         round: workflow.phaseHistory.length,
-        activeMode: 'feature-dev',
+        activeMode:
+          workflow.state.currentStepId?.startsWith('rework-') ? 'rework' : 'feature-dev',
         activePhase: workflow.phaseHistory.at(-1),
         activeSubagent: workflow.activeSubagentHistory.at(-1),
         activeImplementationStep: workflow.state.currentStepId,
         blockedReason: workflow.state.blockedReason,
+        activeStepExecutionSummary: workflow.state.stepExecutionResults.at(-1)?.summary,
+        lastWriteResult,
+        lastReviewDecision: lastReviewDecision || workflow.actionableNextSteps.join(' | '),
         maxIterations
       }
     };

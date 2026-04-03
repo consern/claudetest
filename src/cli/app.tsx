@@ -204,6 +204,26 @@ export function App(): React.JSX.Element {
         ]
       : messages;
 
+  const isIdle = !streaming && messages.length === 0 && !workflowState;
+
+  if (isIdle) {
+    return (
+      <Box flexDirection='column'>
+        <Text color='cyan'>Terminal Coding Client</Text>
+        <StatusBar
+          provider={provider.name}
+          model={env.MODEL_NAME}
+          cwd={cwd}
+          sessionId={sessionId}
+          streaming={streaming}
+        />
+        <Text>Ready for coding tasks.</Text>
+        <Text dimColor>Try: /feature &lt;task&gt; | /review &lt;task&gt; | /read &lt;path&gt;</Text>
+        <InputBox value={input} disabled={pendingApproval !== null} />
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection='column'>
       <Text color='cyan'>Terminal Coding Client</Text>
@@ -221,12 +241,16 @@ export function App(): React.JSX.Element {
       />
       <SubagentPanel activeSubagent={telemetry.activeSubagent} workflowState={workflowState} />
       <CurrentActionView
+        activeMode={telemetry.activeMode}
         round={telemetry.round}
         maxIterations={telemetry.maxIterations}
         activePhase={telemetry.activePhase}
         activeTool={telemetry.activeTool}
         activeSubagent={telemetry.activeSubagent}
         activeImplementationStep={telemetry.activeImplementationStep}
+        activeStepExecutionSummary={telemetry.activeStepExecutionSummary}
+        lastWriteResult={telemetry.lastWriteResult}
+        lastReviewDecision={telemetry.lastReviewDecision}
         blockedReason={telemetry.blockedReason}
       />
       <DecisionBucketsView workflowState={workflowState} />

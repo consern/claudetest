@@ -23,6 +23,8 @@ export function createPlan(userInput: string): AgentPlan {
   if (trimmed.startsWith('/patch')) {
     return { mode: 'patch', phases: [] };
   }
+  if (trimmed.startsWith('/rework')) {
+    return { mode: 'rework', phases: [] };
+  }
   return { mode: 'normal', phases: [] };
 }
-

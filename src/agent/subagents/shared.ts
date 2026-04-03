@@ -47,6 +47,9 @@ export interface ExplorerResult extends ExplorerParsed {
   degraded?: boolean;
   error?: string;
   rawText?: string;
+  rawTextPreview?: string;
+  failureStage?: string;
+  retryCount?: number;
 }
 
 export interface ArchitectResult extends ArchitectParsed {
@@ -54,6 +57,9 @@ export interface ArchitectResult extends ArchitectParsed {
   degraded?: boolean;
   error?: string;
   rawText?: string;
+  rawTextPreview?: string;
+  failureStage?: string;
+  retryCount?: number;
 }
 
 export interface ReviewerResult extends ReviewerParsed {
@@ -61,6 +67,9 @@ export interface ReviewerResult extends ReviewerParsed {
   degraded?: boolean;
   error?: string;
   rawText?: string;
+  rawTextPreview?: string;
+  failureStage?: string;
+  retryCount?: number;
 }
 
 export type SubagentResult = ExplorerResult | ArchitectResult | ReviewerResult;
@@ -96,7 +105,14 @@ function tryParseJson(raw: string): unknown | null {
   }
 }
 
-function toDegradedResult(role: SubagentRole, task: string, error: string, rawText: string): SubagentResult {
+function toDegradedResult(
+  role: SubagentRole,
+  task: string,
+  error: string,
+  rawText: string,
+  failureStage: string,
+  retryCount: number
+): SubagentResult {
   if (role === 'code-explorer') {
     return {
       role,
@@ -110,6 +126,10 @@ function toDegradedResult(role: SubagentRole, task: string, error: string, rawTe
       degraded: true,
       error,
       rawText: rawText.slice(0, 1500)
+      ,
+      rawTextPreview: rawText.slice(0, 200),
+      failureStage,
+      retryCount
     };
   }
   if (role === 'code-architect') {
@@ -125,6 +145,10 @@ function toDegradedResult(role: SubagentRole, task: string, error: string, rawTe
       degraded: true,
       error,
       rawText: rawText.slice(0, 1500)
+      ,
+      rawTextPreview: rawText.slice(0, 200),
+      failureStage,
+      retryCount
     };
   }
   return {
@@ -134,7 +158,10 @@ function toDegradedResult(role: SubagentRole, task: string, error: string, rawTe
     confidence: 0.3,
     degraded: true,
     error,
-    rawText: rawText.slice(0, 1500)
+    rawText: rawText.slice(0, 1500),
+    rawTextPreview: rawText.slice(0, 200),
+    failureStage,
+    retryCount
   };
 }
 
@@ -292,11 +319,20 @@ export async function callSubagent(input: {
       input.role,
       input.task,
       'Malformed JSON after repair+retry',
-      `${firstRaw}\n---\n${retryRaw}`
+      `${firstRaw}\n---\n${retryRaw}`,
+      'retry-parse',
+      1
     );
   }
 
-  return toDegradedResult(input.role, input.task, 'Malformed JSON output', firstRaw);
+  return toDegradedResult(
+    input.role,
+    input.task,
+    'Malformed JSON output',
+    firstRaw,
+    'initial-parse',
+    0
+  );
 }
 
 export function toArchitecturePlan(result: ArchitectResult): ArchitecturePlan {
@@ -317,4 +353,3 @@ export function toArchitecturePlan(result: ArchitectResult): ArchitecturePlan {
     confidence: result.confidence
   };
 }
-

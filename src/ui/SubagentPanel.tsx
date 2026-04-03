@@ -18,11 +18,15 @@ export function SubagentPanel({
       {rows.length === 0 ? <Text dimColor>No subagent reports yet</Text> : null}
       {rows.slice(0, 6).map((row, idx) => (
         <Text key={`${row.role}-${idx}`}>
-          - {row.role} | {row.status} | conf={Math.round((row.confidence ?? 0) * 100)}% |{' '}
-          {row.summary.slice(0, 80)}
+          - {row.role} | {row.status}
+          {row.status === 'degraded' ? ' [degraded]' : ''}
+          {row.error ? ' [validation-failure]' : ''}
+          | conf={Math.round((row.confidence ?? 0) * 100)}%
+          | retry={row.retryCount ?? 0}
+          {row.failureStage ? ` | stage=${row.failureStage}` : ''}
+          | {row.summary.slice(0, 80)}
         </Text>
       ))}
     </Box>
   );
 }
-

@@ -5,7 +5,10 @@ import type { FeatureDevPhase } from '../types/agent.js';
 import type {
   FeatureDevState,
   FeatureDevWorkflowResult,
+  ImplementationStep,
+  ReworkStepContext,
   ReviewFinding,
+  StepExecutionResult,
   WorkflowDisplayNote
 } from '../types/workflow.js';
 import { featureDevPrompt } from './prompts/featureDev.js';
@@ -63,6 +66,151 @@ function createPhaseStatus(active: FeatureDevPhase): FeatureDevWorkflowResult['p
   return status;
 }
 
+function extractPathFromEvidence(evidence: string): string | null {
+  const match = evidence.match(/[A-Za-z]:[\\/][^\s]+|(?:src|tests|docs)[\\/][^\s]+/);
+  return match ? match[0] : null;
+}
+
+function parseJsonFromText(raw: string): unknown | null {
+  const trimmed = raw.trim();
+  const first = trimmed.indexOf('{');
+  const last = trimmed.lastIndexOf('}');
+  if (first < 0 || last <= first) {
+    return null;
+  }
+  try {
+    return JSON.parse(trimmed.slice(first, last + 1));
+  } catch {
+    return null;
+  }
+}
+
+async function buildStepPatchPlan(input: {
+  provider: ModelProvider;
+  model: string;
+  task: string;
+  stepDescription: string;
+  targetFiles: string[];
+  fileSnapshots: Array<{ path: string; content: string }>;
+}): Promise<Array<{ filePath: string; newContent: string; reason: string }>> {
+  const response = await input.provider.createResponse({
+    model: input.model,
+    systemPrompt:
+      'You are an implementation-step executor. Output strict JSON only. Choose minimal safe edits.',
+    messages: [
+      {
+        role: 'user',
+        content:
+          `Task: ${input.task}\n` +
+          `Step: ${input.stepDescription}\n` +
+          `Target files: ${input.targetFiles.join(', ')}\n\n` +
+          `File snapshots:\n${JSON.stringify(input.fileSnapshots)}\n\n` +
+          `Return JSON:\n{"patches":[{"filePath":"string","newContent":"string","reason":"string"}]}`
+      }
+    ]
+  });
+  const parsed = parseJsonFromText(response.text ?? '');
+  if (!parsed || typeof parsed !== 'object') {
+    return [];
+  }
+  const patches = (parsed as Record<string, unknown>).patches;
+  if (!Array.isArray(patches)) {
+    return [];
+  }
+  return patches
+    .map((row) => {
+      if (!row || typeof row !== 'object') {
+        return null;
+      }
+      const rec = row as Record<string, unknown>;
+      if (
+        typeof rec.filePath !== 'string' ||
+        typeof rec.newContent !== 'string' ||
+        typeof rec.reason !== 'string'
+      ) {
+        return null;
+      }
+      return {
+        filePath: rec.filePath,
+        newContent: rec.newContent,
+        reason: rec.reason
+      };
+    })
+    .filter((x): x is { filePath: string; newContent: string; reason: string } => Boolean(x));
+}
+
+async function executeImplementationStep(input: {
+  task: string;
+  step: ImplementationStep;
+  provider: ModelProvider;
+  model: string;
+  toolContext: ToolContext;
+  onToolEvent?: (event: string) => void;
+  onWriteResult?: (summary: string) => void;
+}): Promise<StepExecutionResult> {
+  const attemptedFiles: string[] = [];
+  const snapshots: Array<{ path: string; content: string }> = [];
+
+  for (const target of input.step.targetFiles.slice(0, 4)) {
+    attemptedFiles.push(target);
+    input.onToolEvent?.(`implementation read_file: ${target}`);
+    const read = await executeToolByName('read_file', { path: target }, input.toolContext);
+    if (read.ok && read.data && typeof read.data === 'object') {
+      const rec = read.data as Record<string, unknown>;
+      snapshots.push({
+        path: String(rec.path ?? target),
+        content: String(rec.content ?? '')
+      });
+    }
+  }
+
+  const patches = await buildStepPatchPlan({
+    provider: input.provider,
+    model: input.model,
+    task: input.task,
+    stepDescription: input.step.description,
+    targetFiles: input.step.targetFiles,
+    fileSnapshots: snapshots
+  });
+
+  if (patches.length === 0) {
+    return {
+      stepId: input.step.id,
+      attemptedFiles,
+      patchesProposed: 0,
+      writesApplied: 0,
+      blockedReason: 'No concrete patch proposals generated.',
+      summary: `Step ${input.step.id} blocked: no patches proposed`
+    };
+  }
+
+  let writesApplied = 0;
+  for (const patch of patches.slice(0, 3)) {
+    input.onToolEvent?.(`implementation write_file: ${patch.filePath} (${patch.reason})`);
+    const write = await executeToolByName(
+      'write_file',
+      { filePath: patch.filePath, newContent: patch.newContent },
+      input.toolContext
+    );
+    input.onWriteResult?.(write.summary);
+    if (write.ok) {
+      writesApplied += 1;
+    }
+  }
+
+  return {
+    stepId: input.step.id,
+    attemptedFiles,
+    patchesProposed: patches.length,
+    writesApplied,
+    blockedReason: writesApplied === 0 ? 'All writes were denied or failed.' : undefined,
+    summary:
+      writesApplied > 0
+        ? `Step ${input.step.id} completed: ${writesApplied}/${patches.length} writes applied`
+        : `Step ${input.step.id} blocked: no writes applied`
+  };
+}
+
 export async function runFeatureDevWorkflow(input: {
   task: string;
   provider: ModelProvider;
@@ -73,6 +221,8 @@ export async function runFeatureDevWorkflow(input: {
   onActiveSubagent?: (name: string) => void;
   onImplementationStep?: (stepId: string, status: 'pending' | 'running' | 'done' | 'blocked') => void;
   onBlocked?: (reason: string) => void;
+  onWriteResult?: (summary: string) => void;
+  onReviewDecision?: (summary: string) => void;
 }): Promise<FeatureDevWorkflowResult> {
   const notes: WorkflowDisplayNote[] = [];
   const phaseHistory: FeatureDevPhase[] = [];
@@ -95,6 +245,7 @@ export async function runFeatureDevWorkflow(input: {
     approvalGranted: false,
     implementationTargets: [],
     currentStepId: undefined,
+    stepExecutionResults: [],
     reviewFindings: [],
     decisionBuckets: { fixNow: [], fixLater: [], ignore: [] },
     blockedReason: undefined,
@@ -129,16 +280,8 @@ export async function runFeatureDevWorkflow(input: {
   enterPhase('exploration');
   trackSubagent('code-explorer');
   const [explorerA, explorerB] = await Promise.all([
-    codeExplorerTask({
-      provider: input.provider,
-      model: input.model,
-      task: `${input.task} [explore A]`
-    }),
-    codeExplorerTask({
-      provider: input.provider,
-      model: input.model,
-      task: `${input.task} [explore B]`
-    })
+    codeExplorerTask({ provider: input.provider, model: input.model, task: `${input.task} [explore A]` }),
+    codeExplorerTask({ provider: input.provider, model: input.model, task: `${input.task} [explore B]` })
   ]);
   state.subagentStatus.push(
     {
@@ -146,14 +289,18 @@ export async function runFeatureDevWorkflow(input: {
       status: explorerA.degraded ? 'degraded' : 'done',
       confidence: explorerA.confidence,
       summary: explorerA.summary,
-      error: explorerA.error
+      error: explorerA.error,
+      retryCount: explorerA.retryCount,
+      failureStage: explorerA.failureStage
     },
     {
       role: 'code-explorer',
       status: explorerB.degraded ? 'degraded' : 'done',
       confidence: explorerB.confidence,
       summary: explorerB.summary,
-      error: explorerB.error
+      error: explorerB.error,
+      retryCount: explorerB.retryCount,
+      failureStage: explorerB.failureStage
     }
   );
 
@@ -196,16 +343,8 @@ export async function runFeatureDevWorkflow(input: {
   enterPhase('architecture');
   trackSubagent('code-architect');
   const [architectA, architectB] = await Promise.all([
-    codeArchitectTask({
-      provider: input.provider,
-      model: input.model,
-      task: `${input.task} [architecture A]`
-    }),
-    codeArchitectTask({
-      provider: input.provider,
-      model: input.model,
-      task: `${input.task} [architecture B]`
-    })
+    codeArchitectTask({ provider: input.provider, model: input.model, task: `${input.task} [architecture A]` }),
+    codeArchitectTask({ provider: input.provider, model: input.model, task: `${input.task} [architecture B]` })
   ]);
   state.subagentStatus.push(
     {
@@ -213,14 +352,18 @@ export async function runFeatureDevWorkflow(input: {
       status: architectA.degraded ? 'degraded' : 'done',
       confidence: architectA.confidence,
       summary: architectA.summary,
-      error: architectA.error
+      error: architectA.error,
+      retryCount: architectA.retryCount,
+      failureStage: architectA.failureStage
     },
     {
       role: 'code-architect',
       status: architectB.degraded ? 'degraded' : 'done',
       confidence: architectB.confidence,
       summary: architectB.summary,
-      error: architectB.error
+      error: architectB.error,
+      retryCount: architectB.retryCount,
+      failureStage: architectB.failureStage
     }
   );
 
@@ -275,39 +418,46 @@ export async function runFeatureDevWorkflow(input: {
       state.currentStepId = step.id;
       step.status = 'running';
       input.onImplementationStep?.(step.id, step.status);
-
-      const stepTarget = step.targetFiles[0] ?? state.implementationTargets[0];
-      if (stepTarget) {
-        input.onToolEvent?.(`implementation step ${step.id} read_file: ${stepTarget}`);
-        await executeToolByName('read_file', { path: stepTarget }, input.toolContext);
+      const execution = await executeImplementationStep({
+        task: state.task,
+        step,
+        provider: input.provider,
+        model: input.model,
+        toolContext: input.toolContext,
+        onToolEvent: input.onToolEvent,
+        onWriteResult: input.onWriteResult
+      });
+      state.stepExecutionResults.push(execution);
+      if (execution.writesApplied > 0) {
+        step.status = 'done';
+      } else {
+        step.status = 'blocked';
+        if (!state.blockedReason) {
+          state.blockedReason = execution.blockedReason;
+          input.onBlocked?.(state.blockedReason ?? 'Implementation blocked');
+        }
       }
-
-      step.status = 'done';
       input.onImplementationStep?.(step.id, step.status);
     }
 
     notes.push({
       phase: 'implementation',
       note:
-        `implementation progress: ${state.selectedPlan.implementationSteps
-          .map((s) => `${s.id}=${s.status}`)
-          .join(', ')}`
+        `implementation results:\n` +
+        state.stepExecutionResults
+          .map(
+            (r) =>
+              `- ${r.stepId}: writes=${r.writesApplied}/${r.patchesProposed}, blocked=${r.blockedReason ?? 'no'}`
+          )
+          .join('\n')
     });
   }
 
   enterPhase('review');
   trackSubagent('code-reviewer');
   const [reviewA, reviewB] = await Promise.all([
-    codeReviewerTask({
-      provider: input.provider,
-      model: input.model,
-      task: `${input.task} [review A]`
-    }),
-    codeReviewerTask({
-      provider: input.provider,
-      model: input.model,
-      task: `${input.task} [review B]`
-    })
+    codeReviewerTask({ provider: input.provider, model: input.model, task: `${input.task} [review A]` }),
+    codeReviewerTask({ provider: input.provider, model: input.model, task: `${input.task} [review B]` })
   ]);
   state.subagentStatus.push(
     {
@@ -315,32 +465,71 @@ export async function runFeatureDevWorkflow(input: {
       status: reviewA.degraded ? 'degraded' : 'done',
       confidence: reviewA.confidence,
       summary: reviewA.summary,
-      error: reviewA.error
+      error: reviewA.error,
+      retryCount: reviewA.retryCount,
+      failureStage: reviewA.failureStage
     },
     {
       role: 'code-reviewer',
       status: reviewB.degraded ? 'degraded' : 'done',
       confidence: reviewB.confidence,
       summary: reviewB.summary,
-      error: reviewB.error
+      error: reviewB.error,
+      retryCount: reviewB.retryCount,
+      failureStage: reviewB.failureStage
     }
   );
 
   state.reviewFindings = [...reviewA.findings, ...reviewB.findings];
   state.decisionBuckets = bucketReviewFindings(state.reviewFindings);
+  input.onReviewDecision?.(
+    `fixNow=${state.decisionBuckets.fixNow.length}, fixLater=${state.decisionBuckets.fixLater.length}, ignore=${state.decisionBuckets.ignore.length}`
+  );
 
-  // Flow back to implementation when fix-now findings exist.
-  if (state.decisionBuckets.fixNow.length > 0 && state.selectedPlan) {
+  if (state.approvalGranted && state.decisionBuckets.fixNow.length > 0 && state.selectedPlan) {
+    const reworkContext: ReworkStepContext = {
+      sourceFindings: state.decisionBuckets.fixNow,
+      relatedFiles: uniqueNonEmpty(
+        state.decisionBuckets.fixNow
+          .map((f) => extractPathFromEvidence(f.evidence))
+          .filter((x): x is string => Boolean(x))
+      ),
+      repairGoal: `Resolve ${state.decisionBuckets.fixNow.length} high-priority findings`
+    };
     const reworkId = `rework-${state.selectedPlan.implementationSteps.length + 1}`;
     state.selectedPlan.implementationSteps.push({
       id: reworkId,
-      description: `Address fix-now findings (${state.decisionBuckets.fixNow.length})`,
-      targetFiles: uniqueNonEmpty(state.decisionBuckets.fixNow.map((f) => f.evidence).slice(0, 3)),
+      description: reworkContext.repairGoal,
+      targetFiles: reworkContext.relatedFiles.slice(0, 4),
+      repairGoal: reworkContext.repairGoal,
       status: 'pending'
     });
-    actionableNextSteps.push('Re-enter implementation to resolve fix-now findings.');
+
+    // Re-enter implementation for rework step.
+    enterPhase('implementation');
+    const reworkStep = state.selectedPlan.implementationSteps[state.selectedPlan.implementationSteps.length - 1];
+    state.currentStepId = reworkStep.id;
+    reworkStep.status = 'running';
+    input.onImplementationStep?.(reworkStep.id, reworkStep.status);
+    const reworkResult = await executeImplementationStep({
+      task: `${state.task} [rework]`,
+      step: reworkStep,
+      provider: input.provider,
+      model: input.model,
+      toolContext: input.toolContext,
+      onToolEvent: input.onToolEvent,
+      onWriteResult: input.onWriteResult
+    });
+    state.stepExecutionResults.push(reworkResult);
+    reworkStep.status = reworkResult.writesApplied > 0 ? 'done' : 'blocked';
+    input.onImplementationStep?.(reworkStep.id, reworkStep.status);
+    actionableNextSteps.push(
+      reworkResult.writesApplied > 0
+        ? 'Rework step completed for fix-now findings.'
+        : 'Rework step blocked; user intervention required.'
+    );
   } else {
-    actionableNextSteps.push('Proceed with fix-later backlog and summary.');
+    actionableNextSteps.push('No fix-now findings. Continue with summary.');
   }
 
   notes.push({
@@ -361,6 +550,7 @@ export async function runFeatureDevWorkflow(input: {
       `- exploredFiles=${state.exploredFiles.length}\n` +
       `- approvalGranted=${state.approvalGranted}\n` +
       `- currentStepId=${state.currentStepId ?? 'none'}\n` +
+      `- stepResults=${state.stepExecutionResults.length}\n` +
       `- actionableNextSteps=${actionableNextSteps.join(' | ')}`
   });
   phaseStatus.summary = 'done';

@@ -19,6 +19,12 @@ export const mainPatchPrompt = `You are in patch mode.
 - Keep changes minimal and targeted.
 - Validate results after each action.`;
 
+export const mainReworkPrompt = `You are in rework mode.
+- Focus on fix-now findings only.
+- Avoid unrelated edits.
+- Complete or explicitly block one rework step before moving to the next.
+- Prefer the smallest safe repair scope.`;
+
 export const mainFeatureDevPrompt = `You are in feature-dev mode.
 - Follow staged workflow and stateful orchestration.
 - Use subagents for exploration, architecture, and review.
@@ -30,6 +36,8 @@ export function selectMainPrompt(mode: AgentMode): string {
       return mainReviewPrompt;
     case 'patch':
       return mainPatchPrompt;
+    case 'rework':
+      return `${mainPatchPrompt}\n${mainReworkPrompt}`;
     case 'feature-dev':
       return `${mainNormalPrompt}\n${mainFeatureDevPrompt}`;
     case 'normal':
@@ -37,4 +45,3 @@ export function selectMainPrompt(mode: AgentMode): string {
       return mainNormalPrompt;
   }
 }
-

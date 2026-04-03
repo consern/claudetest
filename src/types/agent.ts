@@ -1,4 +1,4 @@
-export type AgentMode = 'normal' | 'feature-dev' | 'review' | 'patch';
+export type AgentMode = 'normal' | 'feature-dev' | 'review' | 'patch' | 'rework';
 
 export type FeatureDevPhase =
   | 'discovery'
@@ -22,8 +22,10 @@ export interface LoopTelemetry {
   activeSubagent?: string;
   activeTool?: string;
   activeImplementationStep?: string;
+  activeStepExecutionSummary?: string;
+  lastWriteResult?: string;
+  lastReviewDecision?: string;
   lastError?: string;
   blockedReason?: string;
   maxIterations: number;
 }
-

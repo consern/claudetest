@@ -13,9 +13,13 @@ function renderBucket(title: string, rows: ReviewFinding[]): React.JSX.Element {
         {title}: {rows.length}
       </Text>
       {rows.slice(0, 5).map((finding, idx) => (
-        <Text key={`${title}-${idx}`}>
-          - {finding.title} [{finding.category}] {Math.round(finding.confidence * 100)}%
-        </Text>
+        <Box key={`${title}-${idx}`} flexDirection='column'>
+          <Text>
+            - {finding.title} [{finding.category}] {Math.round(finding.confidence * 100)}%
+          </Text>
+          <Text dimColor>  why: {finding.whyItMatters.slice(0, 80)}</Text>
+          <Text dimColor>  evidence: {finding.evidence.slice(0, 80)}</Text>
+        </Box>
       ))}
       {rows.length > 5 ? <Text dimColor>...and {rows.length - 5} more</Text> : null}
     </Box>
@@ -38,4 +42,3 @@ export function DecisionBucketsView({
     </Box>
   );
 }
-

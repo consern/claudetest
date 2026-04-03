@@ -14,7 +14,23 @@ export interface ImplementationStep {
   id: string;
   description: string;
   targetFiles: string[];
+  repairGoal?: string;
   status: 'pending' | 'running' | 'done' | 'blocked';
+}
+
+export interface StepExecutionResult {
+  stepId: string;
+  attemptedFiles: string[];
+  patchesProposed: number;
+  writesApplied: number;
+  blockedReason?: string;
+  summary: string;
+}
+
+export interface ReworkStepContext {
+  sourceFindings: ReviewFinding[];
+  relatedFiles: string[];
+  repairGoal: string;
 }
 
 export interface ArchitecturePlan {
@@ -36,6 +52,7 @@ export interface FeatureDevState {
   approvalGranted: boolean;
   implementationTargets: string[];
   currentStepId?: string;
+  stepExecutionResults: StepExecutionResult[];
   reviewFindings: ReviewFinding[];
   decisionBuckets: {
     fixNow: ReviewFinding[];
@@ -49,6 +66,8 @@ export interface FeatureDevState {
     confidence?: number;
     summary: string;
     error?: string;
+    retryCount?: number;
+    failureStage?: string;
   }>;
 }
 
