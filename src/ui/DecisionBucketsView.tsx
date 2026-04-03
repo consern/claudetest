@@ -17,6 +17,8 @@ function renderBucket(title: string, rows: ReviewFinding[]): React.JSX.Element {
           <Text>
             - {finding.title} [{finding.category}] {Math.round(finding.confidence * 100)}%
           </Text>
+          <Text dimColor>  id: {finding.id}</Text>
+          <Text dimColor>  paths: {finding.relatedPaths.join(', ') || 'none'}</Text>
           <Text dimColor>  why: {finding.whyItMatters.slice(0, 80)}</Text>
           <Text dimColor>  evidence: {finding.evidence.slice(0, 80)}</Text>
         </Box>
@@ -36,6 +38,9 @@ export function DecisionBucketsView({
   return (
     <Box flexDirection='column'>
       <Text color='green'>Decision Buckets</Text>
+      <Text dimColor>
+        lifecycle: {workflowState.findingLifecycle.length} | audit events: {workflowState.auditEvents.length}
+      </Text>
       {renderBucket('fix now', workflowState.decisionBuckets.fixNow)}
       {renderBucket('fix later', workflowState.decisionBuckets.fixLater)}
       {renderBucket('ignore', workflowState.decisionBuckets.ignore)}

@@ -14,6 +14,19 @@ export interface ToolExecutionResult {
   summary: string;
   data?: unknown;
   error?: string;
+  failure?: {
+    toolName: string;
+    reason: string;
+    recoverable: boolean;
+    suggestedNextAction?: string;
+  };
+  telemetry?: {
+    toolName: string;
+    riskLevel?: 'safe' | 'review' | 'dangerous';
+    sideEffectType?: 'read' | 'write' | 'exec' | 'none';
+    durationMs: number;
+    success: boolean;
+  };
 }
 
 export interface ToolDefinition<TInput = unknown> {

@@ -21,6 +21,35 @@ function uniqueNonEmpty(items: string[]): string[] {
   return [...new Set(items.map((x) => x.trim()).filter(Boolean))];
 }
 
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function normalizeReviewFinding(input: {
+  id?: string;
+  title: string;
+  whyItMatters: string;
+  evidence: string;
+  relatedPaths?: string[];
+  confidence: number;
+  category: ReviewFinding['category'];
+}): ReviewFinding {
+  const stableId =
+    input.id ||
+    `f_${Buffer.from(`${input.title}|${input.evidence}`.toLowerCase(), 'utf8')
+      .toString('hex')
+      .slice(0, 12)}`;
+  return {
+    id: stableId,
+    title: input.title,
+    whyItMatters: input.whyItMatters,
+    evidence: input.evidence,
+    relatedPaths: uniqueNonEmpty([...(input.relatedPaths ?? []), extractPathFromEvidence(input.evidence) ?? '']),
+    confidence: input.confidence,
+    category: input.category
+  };
+}
+
 function summarizeFindings(findings: ReviewFinding[]): string {
   if (findings.length === 0) {
     return 'none';
@@ -249,6 +278,8 @@ export async function runFeatureDevWorkflow(input: {
     reviewFindings: [],
     decisionBuckets: { fixNow: [], fixLater: [], ignore: [] },
     blockedReason: undefined,
+    findingLifecycle: [],
+    auditEvents: [],
     subagentStatus: []
   };
 
@@ -262,6 +293,14 @@ export async function runFeatureDevWorkflow(input: {
     });
     phaseStatus[phase] = 'active';
     input.onPhase?.(phase);
+    state.auditEvents.push({
+      timestamp: nowIso(),
+      mode: phase === 'implementation' && state.currentStepId?.startsWith('rework-') ? 'rework' : 'feature-dev',
+      phase,
+      stepId: state.currentStepId,
+      eventType: 'tool_result',
+      summary: `Enter phase: ${phase}`
+    });
   };
 
   const trackSubagent = (name: string): void => {
@@ -321,8 +360,22 @@ export async function runFeatureDevWorkflow(input: {
 
   for (const file of state.exploredFiles.slice(0, 4)) {
     input.onToolEvent?.(`feature-dev read_file: ${file}`);
+    state.auditEvents.push({
+      timestamp: nowIso(),
+      mode: 'feature-dev',
+      phase: 'exploration',
+      eventType: 'tool_call',
+      summary: `read_file ${file}`
+    });
     const read = await executeToolByName('read_file', { path: file }, input.toolContext);
     input.onToolEvent?.(`feature-dev read_file result: ${read.summary}`);
+    state.auditEvents.push({
+      timestamp: nowIso(),
+      mode: 'feature-dev',
+      phase: 'exploration',
+      eventType: 'tool_result',
+      summary: `read_file result: ${read.summary}`
+    });
   }
 
   enterPhase('clarification');
@@ -400,6 +453,13 @@ export async function runFeatureDevWorkflow(input: {
     state.blockedReason = 'Approval denied before implementation.';
     phaseStatus.implementation = 'blocked';
     input.onBlocked?.(state.blockedReason);
+    state.auditEvents.push({
+      timestamp: nowIso(),
+      mode: 'feature-dev',
+      phase: 'approval',
+      eventType: 'blocked',
+      summary: state.blockedReason
+    });
     notes.push({
       phase: 'approval',
       note: 'Approval denied. Implementation blocked.'
@@ -428,6 +488,14 @@ export async function runFeatureDevWorkflow(input: {
         onWriteResult: input.onWriteResult
       });
       state.stepExecutionResults.push(execution);
+      state.auditEvents.push({
+        timestamp: nowIso(),
+        mode: step.id.startsWith('rework-') ? 'rework' : 'feature-dev',
+        phase: 'implementation',
+        stepId: step.id,
+        eventType: 'tool_result',
+        summary: execution.summary
+      });
       if (execution.writesApplied > 0) {
         step.status = 'done';
       } else {
@@ -435,6 +503,14 @@ export async function runFeatureDevWorkflow(input: {
         if (!state.blockedReason) {
           state.blockedReason = execution.blockedReason;
           input.onBlocked?.(state.blockedReason ?? 'Implementation blocked');
+          state.auditEvents.push({
+            timestamp: nowIso(),
+            mode: step.id.startsWith('rework-') ? 'rework' : 'feature-dev',
+            phase: 'implementation',
+            stepId: step.id,
+            eventType: 'blocked',
+            summary: state.blockedReason ?? 'Implementation blocked'
+          });
         }
       }
       input.onImplementationStep?.(step.id, step.status);
@@ -480,8 +556,27 @@ export async function runFeatureDevWorkflow(input: {
     }
   );
 
-  state.reviewFindings = [...reviewA.findings, ...reviewB.findings];
+  state.reviewFindings = [...reviewA.findings, ...reviewB.findings].map((finding) =>
+    normalizeReviewFinding(finding)
+  );
   state.decisionBuckets = bucketReviewFindings(state.reviewFindings);
+  state.findingLifecycle = state.reviewFindings.map((finding) => ({
+    findingId: finding.id,
+    title: finding.title,
+    status: state.decisionBuckets.fixNow.some((row) => row.id === finding.id) ? 'in_rework' : 'open',
+    sourcePhase: 'review',
+    relatedFiles: finding.relatedPaths,
+    linkedStepIds: []
+  }));
+  for (const finding of state.reviewFindings) {
+    state.auditEvents.push({
+      timestamp: nowIso(),
+      mode: 'feature-dev',
+      phase: 'review',
+      eventType: 'review_finding',
+      summary: `${finding.id} ${finding.title} [${finding.category}]`
+    });
+  }
   input.onReviewDecision?.(
     `fixNow=${state.decisionBuckets.fixNow.length}, fixLater=${state.decisionBuckets.fixLater.length}, ignore=${state.decisionBuckets.ignore.length}`
   );
@@ -504,6 +599,14 @@ export async function runFeatureDevWorkflow(input: {
       repairGoal: reworkContext.repairGoal,
       status: 'pending'
     });
+    state.auditEvents.push({
+      timestamp: nowIso(),
+      mode: 'rework',
+      phase: 'implementation',
+      stepId: reworkId,
+      eventType: 'rework_created',
+      summary: reworkContext.repairGoal
+    });
 
     // Re-enter implementation for rework step.
     enterPhase('implementation');
@@ -522,6 +625,32 @@ export async function runFeatureDevWorkflow(input: {
     });
     state.stepExecutionResults.push(reworkResult);
     reworkStep.status = reworkResult.writesApplied > 0 ? 'done' : 'blocked';
+    for (const lifecycle of state.findingLifecycle) {
+      if (lifecycle.status === 'in_rework') {
+        lifecycle.linkedStepIds = uniqueNonEmpty([...lifecycle.linkedStepIds, reworkStep.id]);
+        lifecycle.lastReviewedAt = nowIso();
+        if (reworkResult.writesApplied > 0) {
+          lifecycle.status = 'resolved';
+          lifecycle.resolutionNote = `Resolved by ${reworkStep.id}`;
+          state.auditEvents.push({
+            timestamp: nowIso(),
+            mode: 'rework',
+            phase: 'implementation',
+            stepId: reworkStep.id,
+            eventType: 'finding_resolved',
+            summary: `${lifecycle.findingId} resolved`
+          });
+        }
+      }
+    }
+    state.auditEvents.push({
+      timestamp: nowIso(),
+      mode: 'rework',
+      phase: 'implementation',
+      stepId: reworkStep.id,
+      eventType: reworkResult.writesApplied > 0 ? 'tool_result' : 'blocked',
+      summary: reworkResult.summary
+    });
     input.onImplementationStep?.(reworkStep.id, reworkStep.status);
     actionableNextSteps.push(
       reworkResult.writesApplied > 0

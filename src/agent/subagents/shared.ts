@@ -5,9 +5,11 @@ import type { ArchitecturePlan, ImplementationStep, ReviewFinding } from '../../
 export type SubagentRole = 'code-explorer' | 'code-architect' | 'code-reviewer';
 
 const reviewFindingSchema = z.object({
+  id: z.string().optional(),
   title: z.string().min(1),
   whyItMatters: z.string().min(1),
   evidence: z.string().min(1),
+  relatedPaths: z.array(z.string()).optional(),
   confidence: z.number().min(0).max(1),
   category: z.enum(['bug', 'security', 'guideline', 'performance'])
 });
@@ -41,6 +43,7 @@ const reviewerSchema = z.object({
 type ExplorerParsed = z.infer<typeof explorerSchema>;
 type ArchitectParsed = z.infer<typeof architectSchema>;
 type ReviewerParsed = z.infer<typeof reviewerSchema>;
+type RawReviewFinding = ReviewerParsed['findings'][number];
 
 export interface ExplorerResult extends ExplorerParsed {
   role: 'code-explorer';
@@ -105,6 +108,15 @@ function tryParseJson(raw: string): unknown | null {
   }
 }
 
+function makeFindingId(title: string, evidence: string): string {
+  const base = `${title}::${evidence}`.toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < base.length; i += 1) {
+    hash = (hash * 31 + base.charCodeAt(i)) >>> 0;
+  }
+  return `f_${hash.toString(16)}`;
+}
+
 function toDegradedResult(
   role: SubagentRole,
   task: string,
@@ -125,8 +137,7 @@ function toDegradedResult(
       confidence: 0.3,
       degraded: true,
       error,
-      rawText: rawText.slice(0, 1500)
-      ,
+      rawText: rawText.slice(0, 1500),
       rawTextPreview: rawText.slice(0, 200),
       failureStage,
       retryCount
@@ -144,8 +155,7 @@ function toDegradedResult(
       confidence: 0.3,
       degraded: true,
       error,
-      rawText: rawText.slice(0, 1500)
-      ,
+      rawText: rawText.slice(0, 1500),
       rawTextPreview: rawText.slice(0, 200),
       failureStage,
       retryCount
@@ -202,9 +212,9 @@ function validateByRole(role: SubagentRole, parsed: unknown): SubagentResult | n
 }
 
 export function applyReviewerPrecisionGate(
-  findings: ReviewFinding[],
+  findings: RawReviewFinding[],
   threshold = 0.8
-): ReviewFinding[] {
+): RawReviewFinding[] {
   return findings.filter((finding) => {
     if (!finding.evidence?.trim() || !finding.whyItMatters?.trim()) {
       return false;
@@ -219,8 +229,8 @@ export function applyReviewerPrecisionGate(
 async function validateHighRiskFindings(input: {
   provider: ModelProvider;
   model: string;
-  findings: ReviewFinding[];
-}): Promise<ReviewFinding[]> {
+  findings: RawReviewFinding[];
+}): Promise<RawReviewFinding[]> {
   const highRisk = input.findings.filter(
     (f) => (f.category === 'security' || f.category === 'bug') && f.confidence >= 0.8
   );
@@ -268,6 +278,13 @@ export async function callSubagent(input: {
   outputContract: string;
   retryOnMalformed?: boolean;
 }): Promise<SubagentResult> {
+  const withStableFindingFields = (findings: RawReviewFinding[]): ReviewFinding[] =>
+    findings.map((f) => ({
+      ...f,
+      id: f.id || makeFindingId(f.title, f.evidence),
+      relatedPaths: f.relatedPaths?.filter(Boolean) ?? []
+    }));
+
   const firstRaw = await askSubagent({
     provider: input.provider,
     model: input.model,
@@ -286,7 +303,7 @@ export async function callSubagent(input: {
         model: input.model,
         findings: filtered
       });
-      return { ...firstValidated, findings: validated };
+      return { ...firstValidated, findings: withStableFindingFields(validated) };
     }
     return firstValidated;
   }
@@ -311,7 +328,7 @@ export async function callSubagent(input: {
           model: input.model,
           findings: filtered
         });
-        return { ...retryValidated, findings: validated };
+        return { ...retryValidated, findings: withStableFindingFields(validated) };
       }
       return retryValidated;
     }

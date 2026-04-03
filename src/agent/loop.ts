@@ -8,8 +8,8 @@ import type { AgentMode, FeatureDevPhase, LoopTelemetry } from '../types/agent.j
 import type { FeatureDevState } from '../types/workflow.js';
 import { createPlan } from './planner.js';
 import { runFeatureDevWorkflow } from './workflow.js';
-import { selectMainPrompt } from './systemPrompt.js';
 import { executeToolByName, listToolDefinitions } from '../tools/toolRegistry.js';
+import { getModePolicy } from './modePolicy.js';
 
 export interface AgentResult {
   text: string;
@@ -43,7 +43,7 @@ async function modelStep(input: {
   onTextChunk?: (chunk: string) => void;
 }): Promise<ProviderResponse> {
   const tools = listToolDefinitions();
-  const prompt = selectMainPrompt(input.mode);
+  const prompt = getModePolicy(input.mode).prompt;
   if (!input.stream || !input.provider.streamResponse) {
     const response = await input.provider.createResponse({
       model: input.model,
@@ -117,6 +117,7 @@ export async function runAgentLoop(input: {
 }): Promise<AgentResult> {
   const plan = createPlan(input.userText);
   const mode = plan.mode;
+  const modePolicy = getModePolicy(mode);
   const toolEvents: string[] = [];
   const maxIterations = input.maxIterations ?? 6;
 
@@ -132,8 +133,9 @@ export async function runAgentLoop(input: {
       onPhase: (phase) => {
         input.onTelemetry?.({
           round: 0,
-          activeMode: 'feature-dev',
+          activeMode: mode,
           activePhase: phase,
+          activeStepExecutionSummary: `uiFocus=${modePolicy.defaultUiFocus}`,
           maxIterations
         });
       },
@@ -190,12 +192,14 @@ export async function runAgentLoop(input: {
       telemetry: {
         round: workflow.phaseHistory.length,
         activeMode:
-          workflow.state.currentStepId?.startsWith('rework-') ? 'rework' : 'feature-dev',
+          workflow.state.currentStepId?.startsWith('rework-') ? 'rework' : mode,
         activePhase: workflow.phaseHistory.at(-1),
         activeSubagent: workflow.activeSubagentHistory.at(-1),
         activeImplementationStep: workflow.state.currentStepId,
         blockedReason: workflow.state.blockedReason,
-        activeStepExecutionSummary: workflow.state.stepExecutionResults.at(-1)?.summary,
+        activeStepExecutionSummary:
+          workflow.state.stepExecutionResults.at(-1)?.summary ??
+          `uiFocus=${modePolicy.defaultUiFocus}`,
         lastWriteResult,
         lastReviewDecision: lastReviewDecision || workflow.actionableNextSteps.join(' | '),
         maxIterations
@@ -262,6 +266,27 @@ export async function runAgentLoop(input: {
       });
 
       const result = await executeToolByName(toolCall.name, toolCall.args, input.toolContext);
+      if (!result.ok && result.failure?.recoverable) {
+        const retryEvent = `tool_recovery_retry: ${toolCall.name}`;
+        toolEvents.push(retryEvent);
+        input.onToolEvent?.(retryEvent);
+        const retried = await executeToolByName(toolCall.name, toolCall.args, input.toolContext);
+        if (retried.ok) {
+          const recovered = `tool_recovery_success: ${toolCall.name}`;
+          toolEvents.push(recovered);
+          input.onToolEvent?.(recovered);
+          conversation.push({
+            role: 'tool_result',
+            id: callId,
+            toolName: toolCall.name,
+            result: retried
+          });
+          const endRecovered = `tool_result: ${toolCall.name} -> ${retried.summary}`;
+          toolEvents.push(endRecovered);
+          input.onToolEvent?.(endRecovered);
+          continue;
+        }
+      }
       conversation.push({
         role: 'tool_result',
         id: callId,
