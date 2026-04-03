@@ -18,8 +18,10 @@ export interface ToolExecutionResult {
 
 export interface ToolDefinition<TInput = unknown> {
   name: string;
+  displayName: string;
   description: string;
+  riskLevel?: 'safe' | 'review' | 'dangerous';
+  sideEffectType?: 'read' | 'write' | 'exec' | 'none';
   schema: z.ZodType<TInput>;
   execute: (args: TInput, ctx: ToolContext) => Promise<ToolExecutionResult>;
 }
-

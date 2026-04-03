@@ -1,4 +1,4 @@
-﻿export type AgentMode = 'chat' | 'feature-dev';
+export type AgentMode = 'normal' | 'feature-dev' | 'review' | 'patch';
 
 export type FeatureDevPhase =
   | 'discovery'
@@ -15,12 +15,15 @@ export interface AgentPlan {
   phases: FeatureDevPhase[];
 }
 
-export interface AgentTelemetry {
-  mode: AgentMode;
-  loopRound: number;
-  maxIterations: number;
-  currentPhase?: FeatureDevPhase;
+export interface LoopTelemetry {
+  round: number;
+  activeMode: AgentMode;
+  activePhase?: FeatureDevPhase;
   activeSubagent?: string;
-  currentToolCall?: string;
+  activeTool?: string;
+  activeImplementationStep?: string;
+  lastError?: string;
+  blockedReason?: string;
+  maxIterations: number;
 }
 

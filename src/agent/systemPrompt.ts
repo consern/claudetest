@@ -1,2 +1,2 @@
-export { mainAgentPrompt as mainSystemPrompt } from './prompts/main.js';
+export { selectMainPrompt } from './prompts/main.js';
 

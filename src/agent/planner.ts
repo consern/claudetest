@@ -1,24 +1,28 @@
-﻿import type { AgentPlan } from '../types/agent.js';
+import type { AgentPlan } from '../types/agent.js';
 
 export function createPlan(userInput: string): AgentPlan {
-  const isFeatureMode = userInput.startsWith('/feature');
-
-  if (!isFeatureMode) {
-    return { mode: 'chat', phases: [] };
+  const trimmed = userInput.trim();
+  if (trimmed.startsWith('/feature')) {
+    return {
+      mode: 'feature-dev',
+      phases: [
+        'discovery',
+        'exploration',
+        'clarification',
+        'architecture',
+        'approval',
+        'implementation',
+        'review',
+        'summary'
+      ]
+    };
   }
-
-  return {
-    mode: 'feature-dev',
-    phases: [
-      'discovery',
-      'exploration',
-      'clarification',
-      'architecture',
-      'approval',
-      'implementation',
-      'review',
-      'summary'
-    ]
-  };
+  if (trimmed.startsWith('/review')) {
+    return { mode: 'review', phases: [] };
+  }
+  if (trimmed.startsWith('/patch')) {
+    return { mode: 'patch', phases: [] };
+  }
+  return { mode: 'normal', phases: [] };
 }
 

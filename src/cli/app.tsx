@@ -7,7 +7,7 @@ import { envSchema } from '../config/env.js';
 import { createProvider } from '../providers/factory.js';
 import type { ChatMessage } from '../types/message.js';
 import type { ToolApprovalRequest } from '../types/tool.js';
-import type { AgentTelemetry } from '../types/agent.js';
+import type { LoopTelemetry, FeatureDevPhase } from '../types/agent.js';
 import type { FeatureDevState } from '../types/workflow.js';
 import { ChatView } from '../ui/ChatView.js';
 import { InputBox } from '../ui/InputBox.js';
@@ -52,12 +52,15 @@ export function App(): React.JSX.Element {
   const [streaming, setStreaming] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [pendingAssistant, setPendingAssistant] = useState('');
-  const [telemetry, setTelemetry] = useState<AgentTelemetry>({
-    mode: 'chat',
-    loopRound: 0,
+  const [telemetry, setTelemetry] = useState<LoopTelemetry>({
+    activeMode: 'normal',
+    round: 0,
     maxIterations: 0
   });
   const [workflowState, setWorkflowState] = useState<FeatureDevState | undefined>(undefined);
+  const [phaseStatus, setPhaseStatus] = useState<
+    Partial<Record<FeatureDevPhase, 'pending' | 'active' | 'done' | 'blocked'>>
+  >({});
 
   const approval = useMemo(
     () =>
@@ -125,6 +128,7 @@ export function App(): React.JSX.Element {
         setPendingAssistant('');
         setToolEvents([]);
         setWorkflowState(undefined);
+        setPhaseStatus({});
 
         try {
           const commandOut = await runCommand(text, toolContext);
@@ -144,15 +148,9 @@ export function App(): React.JSX.Element {
             toolContext,
             cwd,
             maxIterations: 8,
-            onTextChunk: (chunk) => {
-              setPendingAssistant((prev) => prev + chunk);
-            },
-            onToolEvent: (event) => {
-              setToolEvents((prev) => [...prev, event]);
-            },
-            onTelemetry: (nextTelemetry) => {
-              setTelemetry(nextTelemetry);
-            }
+            onTextChunk: (chunk) => setPendingAssistant((prev) => prev + chunk),
+            onToolEvent: (event) => setToolEvents((prev) => [...prev, event]),
+            onTelemetry: (nextTelemetry) => setTelemetry(nextTelemetry)
           });
 
           const assistant = makeMessage('assistant', result.text);
@@ -160,6 +158,9 @@ export function App(): React.JSX.Element {
           setMessages(withAssistant);
           setToolEvents((prev) => [...prev, ...result.toolEvents]);
           setWorkflowState(result.workflowState);
+          if (result.phaseStatus) {
+            setPhaseStatus(result.phaseStatus);
+          }
           if (result.telemetry) {
             setTelemetry(result.telemetry);
           }
@@ -169,6 +170,7 @@ export function App(): React.JSX.Element {
           const assistant = makeMessage('assistant', `Execution failed: ${errText}`);
           const withAssistant = appendHistory(nextHistory, assistant);
           setMessages(withAssistant);
+          setTelemetry((prev) => ({ ...prev, lastError: errText }));
           await persist(withAssistant);
         } finally {
           setPendingAssistant('');
@@ -212,12 +214,20 @@ export function App(): React.JSX.Element {
         sessionId={sessionId}
         streaming={streaming}
       />
-      <PhaseTracker currentPhase={telemetry.currentPhase} />
-      <SubagentPanel activeSubagent={telemetry.activeSubagent} />
+      <PhaseTracker
+        currentPhase={telemetry.activePhase}
+        phaseStatus={phaseStatus}
+        blockedReason={telemetry.blockedReason}
+      />
+      <SubagentPanel activeSubagent={telemetry.activeSubagent} workflowState={workflowState} />
       <CurrentActionView
-        currentToolCall={telemetry.currentToolCall}
-        loopRound={telemetry.loopRound}
+        round={telemetry.round}
         maxIterations={telemetry.maxIterations}
+        activePhase={telemetry.activePhase}
+        activeTool={telemetry.activeTool}
+        activeSubagent={telemetry.activeSubagent}
+        activeImplementationStep={telemetry.activeImplementationStep}
+        blockedReason={telemetry.blockedReason}
       />
       <DecisionBucketsView workflowState={workflowState} />
       <ChatView messages={displayMessages} />
@@ -231,4 +241,3 @@ export function App(): React.JSX.Element {
     </Box>
   );
 }
-

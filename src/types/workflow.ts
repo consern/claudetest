@@ -10,11 +10,19 @@ export interface ReviewFinding {
   category: ReviewCategory;
 }
 
+export interface ImplementationStep {
+  id: string;
+  description: string;
+  targetFiles: string[];
+  status: 'pending' | 'running' | 'done' | 'blocked';
+}
+
 export interface ArchitecturePlan {
+  summary: string;
   recommendedApproach: string;
   filesToModify: string[];
   filesToCreate: string[];
-  implementationSteps: string[];
+  implementationSteps: ImplementationStep[];
   tradeoffs: string[];
   confidence: number;
 }
@@ -27,12 +35,21 @@ export interface FeatureDevState {
   selectedPlan?: ArchitecturePlan;
   approvalGranted: boolean;
   implementationTargets: string[];
+  currentStepId?: string;
   reviewFindings: ReviewFinding[];
   decisionBuckets: {
     fixNow: ReviewFinding[];
     fixLater: ReviewFinding[];
     ignore: ReviewFinding[];
   };
+  blockedReason?: string;
+  subagentStatus: Array<{
+    role: 'code-explorer' | 'code-architect' | 'code-reviewer';
+    status: 'done' | 'degraded' | 'failed';
+    confidence?: number;
+    summary: string;
+    error?: string;
+  }>;
 }
 
 export interface WorkflowDisplayNote {
@@ -44,6 +61,7 @@ export interface FeatureDevWorkflowResult {
   notes: WorkflowDisplayNote[];
   state: FeatureDevState;
   phaseHistory: FeatureDevPhase[];
+  phaseStatus: Record<FeatureDevPhase, 'pending' | 'active' | 'done' | 'blocked'>;
   activeSubagentHistory: string[];
+  actionableNextSteps: string[];
 }
-

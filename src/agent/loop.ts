@@ -4,18 +4,19 @@ import type { ChatMessage } from '../types/message.js';
 import type { ToolContext } from '../tools/types.js';
 import type { AgentMessage } from '../types/agentMessages.js';
 import type { ProviderResponse } from '../types/provider.js';
-import type { AgentTelemetry } from '../types/agent.js';
+import type { AgentMode, FeatureDevPhase, LoopTelemetry } from '../types/agent.js';
 import type { FeatureDevState } from '../types/workflow.js';
 import { createPlan } from './planner.js';
 import { runFeatureDevWorkflow } from './workflow.js';
-import { mainSystemPrompt } from './systemPrompt.js';
+import { selectMainPrompt } from './systemPrompt.js';
 import { executeToolByName, listToolDefinitions } from '../tools/toolRegistry.js';
 
 export interface AgentResult {
   text: string;
   toolEvents: string[];
-  telemetry?: AgentTelemetry;
+  telemetry?: LoopTelemetry;
   workflowState?: FeatureDevState;
+  phaseStatus?: Partial<Record<FeatureDevPhase, 'pending' | 'active' | 'done' | 'blocked'>>;
 }
 
 function toAgentMessage(msg: ChatMessage): AgentMessage {
@@ -36,16 +37,17 @@ function chunkText(input: string, size = 30): string[] {
 async function modelStep(input: {
   provider: ModelProvider;
   model: string;
-  systemPrompt: string;
+  mode: AgentMode;
   messages: AgentMessage[];
   stream?: boolean;
   onTextChunk?: (chunk: string) => void;
 }): Promise<ProviderResponse> {
   const tools = listToolDefinitions();
+  const prompt = selectMainPrompt(input.mode);
   if (!input.stream || !input.provider.streamResponse) {
     const response = await input.provider.createResponse({
       model: input.model,
-      systemPrompt: input.systemPrompt,
+      systemPrompt: prompt,
       messages: input.messages,
       tools
     });
@@ -62,7 +64,7 @@ async function modelStep(input: {
 
   for await (const event of input.provider.streamResponse({
     model: input.model,
-    systemPrompt: input.systemPrompt,
+    systemPrompt: prompt,
     messages: input.messages,
     tools
   })) {
@@ -111,13 +113,14 @@ export async function runAgentLoop(input: {
   maxIterations?: number;
   onTextChunk?: (chunk: string) => void;
   onToolEvent?: (event: string) => void;
-  onTelemetry?: (telemetry: AgentTelemetry) => void;
+  onTelemetry?: (telemetry: LoopTelemetry) => void;
 }): Promise<AgentResult> {
   const plan = createPlan(input.userText);
+  const mode = plan.mode;
   const toolEvents: string[] = [];
   const maxIterations = input.maxIterations ?? 6;
 
-  if (plan.mode === 'feature-dev') {
+  if (mode === 'feature-dev') {
     const workflow = await runFeatureDevWorkflow({
       task: input.userText,
       provider: input.provider,
@@ -126,18 +129,35 @@ export async function runAgentLoop(input: {
       onToolEvent: input.onToolEvent,
       onPhase: (phase) => {
         input.onTelemetry?.({
-          mode: 'feature-dev',
-          loopRound: 0,
-          maxIterations,
-          currentPhase: phase
+          round: 0,
+          activeMode: 'feature-dev',
+          activePhase: phase,
+          maxIterations
         });
       },
       onActiveSubagent: (name) => {
         input.onTelemetry?.({
-          mode: 'feature-dev',
-          loopRound: 0,
-          maxIterations,
-          activeSubagent: name
+          round: 0,
+          activeMode: 'feature-dev',
+          activeSubagent: name,
+          maxIterations
+        });
+      },
+      onImplementationStep: (stepId) => {
+        input.onTelemetry?.({
+          round: 0,
+          activeMode: 'feature-dev',
+          activeImplementationStep: stepId,
+          maxIterations
+        });
+      },
+      onBlocked: (reason) => {
+        input.onTelemetry?.({
+          round: 0,
+          activeMode: 'feature-dev',
+          blockedReason: reason,
+          lastError: reason,
+          maxIterations
         });
       }
     });
@@ -146,12 +166,15 @@ export async function runAgentLoop(input: {
       text: workflow.notes.map((p) => `[${p.phase}] ${p.note}`).join('\n\n'),
       toolEvents,
       workflowState: workflow.state,
+      phaseStatus: workflow.phaseStatus,
       telemetry: {
-        mode: 'feature-dev',
-        loopRound: workflow.phaseHistory.length,
-        maxIterations,
-        currentPhase: workflow.phaseHistory.at(-1),
-        activeSubagent: workflow.activeSubagentHistory.at(-1)
+        round: workflow.phaseHistory.length,
+        activeMode: 'feature-dev',
+        activePhase: workflow.phaseHistory.at(-1),
+        activeSubagent: workflow.activeSubagentHistory.at(-1),
+        activeImplementationStep: workflow.state.currentStepId,
+        blockedReason: workflow.state.blockedReason,
+        maxIterations
       }
     };
   }
@@ -163,15 +186,15 @@ export async function runAgentLoop(input: {
 
   for (let round = 0; round < maxIterations; round += 1) {
     input.onTelemetry?.({
-      mode: 'chat',
-      loopRound: round + 1,
+      round: round + 1,
+      activeMode: mode,
       maxIterations
     });
 
     const response = await modelStep({
       provider: input.provider,
       model: input.model,
-      systemPrompt: mainSystemPrompt,
+      mode,
       messages: conversation,
       stream: true,
       onTextChunk: input.onTextChunk
@@ -184,8 +207,8 @@ export async function runAgentLoop(input: {
         text: finalText,
         toolEvents,
         telemetry: {
-          mode: 'chat',
-          loopRound: round + 1,
+          round: round + 1,
+          activeMode: mode,
           maxIterations
         }
       };
@@ -208,10 +231,10 @@ export async function runAgentLoop(input: {
       toolEvents.push(start);
       input.onToolEvent?.(start);
       input.onTelemetry?.({
-        mode: 'chat',
-        loopRound: round + 1,
-        maxIterations,
-        currentToolCall: start
+        round: round + 1,
+        activeMode: mode,
+        activeTool: start,
+        maxIterations
       });
 
       const result = await executeToolByName(toolCall.name, toolCall.args, input.toolContext);
@@ -232,10 +255,10 @@ export async function runAgentLoop(input: {
     text: 'Reached max iterations. Stop to prevent infinite loops.',
     toolEvents,
     telemetry: {
-      mode: 'chat',
-      loopRound: maxIterations,
+      round: maxIterations,
+      activeMode: mode,
+      lastError: 'Max iterations reached',
       maxIterations
     }
   };
 }
-

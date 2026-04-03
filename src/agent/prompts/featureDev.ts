@@ -1,4 +1,4 @@
-export const featureDevPrompt = `Feature-dev staged workflow:
+export const featureDevPrompt = `Feature-dev execution workflow:
 1) Discovery
 2) Exploration
 3) Clarification
@@ -8,13 +8,15 @@ export const featureDevPrompt = `Feature-dev staged workflow:
 7) Review
 8) Summary
 
-Strict rules:
-- Discovery must produce a concrete todo list.
-- Exploration must return entry points and suggested files.
-- Main agent must read files identified by subagents before choosing implementation.
-- Architecture must select one recommended direction, not multiple vague options.
+Execution constraints:
+- Discovery must produce concrete todos and assumptions.
+- Exploration must identify entry points and files to read.
+- Main agent must read files identified by subagents before architecture selection.
+- Architecture must choose one recommended direction and convert it into explicit implementation steps.
 - Approval gate is mandatory before implementation.
-- Review findings must be bucketed into fix now / fix later / ignore.
-- Minimize false positives; uncertain issues should not be reported as real defects.
+- Implementation must update workflow step status after each step.
+- Review findings must be bucketed: fixNow/fixLater/ignore.
+- If fixNow exists, workflow should re-enter implementation with explicit rework steps.
+- If blocked, return explicit blocked reason and next action.
 `;
 

@@ -4,11 +4,7 @@ import { searchFilesTool } from './searchFiles.js';
 import { writeFileTool } from './writeFile.js';
 import { execShellTool } from './execShell.js';
 import { previewDiffTool } from './previewDiff.js';
-import type {
-  ToolContext,
-  ToolDefinition,
-  ToolExecutionResult
-} from './types.js';
+import type { ToolContext, ToolDefinition, ToolExecutionResult } from './types.js';
 import type { ProviderToolDefinition } from '../types/provider.js';
 
 const readFileSchema = z.object({
@@ -38,35 +34,54 @@ const previewDiffSchema = z.object({
 const definitions: ToolDefinition[] = [
   {
     name: 'read_file',
+    displayName: 'Read File',
     description: 'Read file content inside workspace',
+    riskLevel: 'safe',
+    sideEffectType: 'read',
     schema: readFileSchema,
-    execute: async (args, ctx) => readFileTool(args as z.infer<typeof readFileSchema>, ctx)
+    execute: async (args, ctx) =>
+      readFileTool(args as z.infer<typeof readFileSchema>, ctx)
   },
   {
     name: 'search_files',
+    displayName: 'Search Files',
     description: 'Search text across workspace files',
+    riskLevel: 'safe',
+    sideEffectType: 'read',
     schema: searchFilesSchema,
-    execute: async (args, ctx) => searchFilesTool(args as z.infer<typeof searchFilesSchema>, ctx)
+    execute: async (args, ctx) =>
+      searchFilesTool(args as z.infer<typeof searchFilesSchema>, ctx)
   },
   {
     name: 'write_file',
+    displayName: 'Write File',
     description: 'Write file after diff + approval',
+    riskLevel: 'review',
+    sideEffectType: 'write',
     schema: writeFileSchema,
-    execute: async (args, ctx) => writeFileTool(args as z.infer<typeof writeFileSchema>, ctx)
+    execute: async (args, ctx) =>
+      writeFileTool(args as z.infer<typeof writeFileSchema>, ctx)
   },
   {
     name: 'exec_shell',
+    displayName: 'Exec Shell',
     description: 'Execute shell command in workspace with approval',
+    riskLevel: 'review',
+    sideEffectType: 'exec',
     schema: execShellSchema,
-    execute: async (args, ctx) => execShellTool(args as z.infer<typeof execShellSchema>, ctx)
+    execute: async (args, ctx) =>
+      execShellTool(args as z.infer<typeof execShellSchema>, ctx)
   },
   {
     name: 'preview_diff',
+    displayName: 'Preview Diff',
     description: 'Generate unified diff from two file versions',
+    riskLevel: 'safe',
+    sideEffectType: 'none',
     schema: previewDiffSchema,
     execute: async (args) => ({
       ok: true,
-      summary: 'diff generated',
+      summary: 'Generated diff preview',
       data: previewDiffTool(args as z.infer<typeof previewDiffSchema>).unifiedDiff
     })
   }
@@ -75,7 +90,9 @@ const definitions: ToolDefinition[] = [
 export function listToolDefinitions(): ProviderToolDefinition[] {
   return definitions.map((tool) => ({
     name: tool.name,
-    description: tool.description,
+    description: `${tool.description} (risk=${tool.riskLevel ?? 'review'}, sideEffect=${
+      tool.sideEffectType ?? 'none'
+    })`,
     inputSchema: z.toJSONSchema(tool.schema)
   }));
 }
@@ -87,14 +104,14 @@ export async function executeToolByName(
 ): Promise<ToolExecutionResult> {
   const tool = definitions.find((item) => item.name === name);
   if (!tool) {
-    return { ok: false, summary: `未知工具: ${name}` };
+    return { ok: false, summary: `Unknown tool: ${name}` };
   }
 
   const parsed = tool.schema.safeParse(args);
   if (!parsed.success) {
     return {
       ok: false,
-      summary: `工具参数校验失败: ${name}`,
+      summary: `Tool argument validation failed: ${name}`,
       error: parsed.error.message
     };
   }
@@ -104,8 +121,9 @@ export async function executeToolByName(
   } catch (error) {
     return {
       ok: false,
-      summary: `工具执行异常: ${name}`,
+      summary: `Tool execution failed: ${name}`,
       error: error instanceof Error ? error.message : String(error)
     };
   }
 }
+

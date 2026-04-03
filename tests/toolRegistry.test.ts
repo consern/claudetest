@@ -22,5 +22,5 @@ test('unknown tool fails gracefully', async () => {
 test('invalid args fail schema validation', async () => {
   const out = await executeToolByName('read_file', {}, ctx);
   assert.equal(out.ok, false);
-  assert.match(out.summary, /参数校验失败|校验失败/);
+  assert.match(out.summary, /validation failed|failed/i);
 });
