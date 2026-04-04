@@ -3,6 +3,7 @@ import { triggerRework } from '../api/reviews';
 import { ApprovalQueue } from '../components/ApprovalQueue';
 import { AuditTimelineView } from '../components/AuditTimelineView';
 import { DecisionBucketsView } from '../components/DecisionBucketsView';
+import { StreamHealthIndicator } from '../components/StreamHealthIndicator';
 import { useAppStore } from '../store/appStore';
 import { useEventStore } from '../store/eventStore';
 import { useReviewStore } from '../store/reviewStore';
@@ -148,12 +149,7 @@ export function ReviewWorkspacePage() {
       </div>
       <div className="list">
         <ApprovalQueue approvals={approvals} onChanged={() => void refreshApprovals()} />
-        <div className="panel">
-          <h3>Realtime</h3>
-          <div className="muted">task stream: {streamHealth.task}</div>
-          <div className="muted">audit stream: {streamHealth.audit}</div>
-          <div className="muted">fallback polling: {fallbackPolling ? 'on' : 'off'}</div>
-        </div>
+        <StreamHealthIndicator streamHealth={streamHealth} fallbackPolling={fallbackPolling} />
         <AuditTimelineView runtime={currentRuntime} focusText={selected?.title} />
       </div>
     </div>

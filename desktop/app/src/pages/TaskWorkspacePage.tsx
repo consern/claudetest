@@ -4,6 +4,7 @@ import { CurrentActionPanel } from '../components/CurrentActionPanel';
 import { ImplementationStepsPanel } from '../components/ImplementationStepsPanel';
 import { MainThreadView } from '../components/MainThreadView';
 import { PhaseTracker } from '../components/PhaseTracker';
+import { StreamHealthIndicator } from '../components/StreamHealthIndicator';
 import { SubagentPanel } from '../components/SubagentPanel';
 import { TaskSidebar } from '../components/TaskSidebar';
 import { useAppStore } from '../store/appStore';
@@ -66,12 +67,7 @@ export function TaskWorkspacePage() {
       />
       <div className="list">
         <MainThreadView runtime={currentRuntime} approvals={approvals} />
-        <div className="panel">
-          <h3>Realtime</h3>
-          <div className="muted">task stream: {streamHealth.task}</div>
-          <div className="muted">approval stream: {streamHealth.approvals}</div>
-          <div className="muted">fallback polling: {fallbackPolling ? 'on' : 'off'}</div>
-        </div>
+        <StreamHealthIndicator streamHealth={streamHealth} fallbackPolling={fallbackPolling} />
         <ApprovalQueue approvals={approvals} onChanged={() => void refreshApprovals()} />
       </div>
       <div className="list">
