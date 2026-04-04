@@ -18,6 +18,7 @@ export function ReviewWorkspacePage() {
     currentRuntime,
     refreshAll,
     refreshApprovals,
+    refreshReviews,
     refreshTaskRuntime,
     applyStreamEvent
   } =
@@ -45,7 +46,8 @@ export function ReviewWorkspacePage() {
         return;
       }
       void refreshTaskRuntime(currentTaskId);
-      void refreshAll();
+      void refreshReviews();
+      void refreshApprovals();
     }, 8000);
     return () => {
       stop();
@@ -54,7 +56,8 @@ export function ReviewWorkspacePage() {
   }, [
     currentTaskId,
     refreshTaskRuntime,
-    refreshAll,
+    refreshReviews,
+    refreshApprovals,
     applyStreamEvent,
     fallbackPolling,
     startTaskStreams
@@ -134,7 +137,7 @@ export function ReviewWorkspacePage() {
             <button
               onClick={async () => {
                 await triggerRework(currentTaskId);
-                await refreshAll();
+                await refreshReviews();
                 await refreshTaskRuntime(currentTaskId);
               }}
             >

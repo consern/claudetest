@@ -31,6 +31,14 @@
   - `taskStore` 新增 `refreshApprovals()`，用于仅刷新审批队列。
   - Task/Review 页面的 `ApprovalQueue onChanged` 从 `refreshAll()` 收敛为 `refreshApprovals()`。
   - 目标是减少“审批按钮操作 -> 全量刷新”的冗余调用，保持审批动作局部闭环。
+- 本轮继续优化（2026-04-04，第二轮）：
+  - `taskStore` 新增 `refreshReviews()`，用于仅刷新 review 列表。
+  - `ReviewWorkspacePage` 在 fallback polling 时由 `refreshAll()` 收敛为：
+    - `refreshTaskRuntime(currentTaskId)`
+    - `refreshReviews()`
+    - `refreshApprovals()`
+  - `Trigger Rework` 后刷新由 `refreshAll()` 收敛为 `refreshReviews() + refreshTaskRuntime(currentTaskId)`。
+  - 目标是进一步减少 Review 页“轮询/动作触发 -> 全量刷新”的依赖面。
 
 ## 4) 关键架构决定
 - 前端采用“统一事件层 + store 路由”的模式：
@@ -42,11 +50,10 @@
 - Review 决策面板保持“selected finding 为主焦点”的信息层次，不回退为平铺列表。
 
 ## 5) 当前状态
-- 代码已推送到 `origin/codex/terminal-client-mvp`，最新提交：`ab1e8a0`。
+- 代码已推送到 `origin/codex/terminal-client-mvp`，最新提交：`4a26ece`。
 - 工作区当前存在未提交改动：
-  - `desktop/app/src/pages/TaskWorkspacePage.tsx`（事件后刷新策略收敛 + 审批回调局部刷新）
-  - `desktop/app/src/pages/ReviewWorkspacePage.tsx`（审批回调局部刷新）
-  - `desktop/app/src/store/taskStore.ts`（新增 `refreshApprovals()`）
+  - `desktop/app/src/pages/ReviewWorkspacePage.tsx`（fallback/rework 后刷新策略收敛）
+  - `desktop/app/src/store/taskStore.ts`（新增 `refreshReviews()`）
 - 最近一次回归通过：
   - `pnpm -s build`
   - `pnpm -s test`（16/16）

@@ -18,6 +18,7 @@ interface TaskStore {
   lastEventTs?: string;
   refreshAll: () => Promise<void>;
   refreshApprovals: () => Promise<void>;
+  refreshReviews: () => Promise<void>;
   refreshTaskRuntime: (taskId: string) => Promise<void>;
   applyStreamEvent: (event: StreamEnvelope) => void;
 }
@@ -42,6 +43,10 @@ export const useTaskStore = create<TaskStore>((set) => ({
   refreshApprovals: async () => {
     const approvals = await getApprovals();
     set({ approvals });
+  },
+  refreshReviews: async () => {
+    const reviews = await getReviews();
+    set({ reviews });
   },
   refreshTaskRuntime: async (taskId: string) => {
     const runtime = await getTask(taskId);
