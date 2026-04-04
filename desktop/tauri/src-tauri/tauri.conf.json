@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Workbench Desktop",
+  "version": "0.1.0",
+  "identifier": "local.workbench.desktop",
+  "build": {
+    "beforeDevCommand": "cd ../app && pnpm dev",
+    "beforeBuildCommand": "cd ../app && pnpm build",
+    "devUrl": "http://localhost:5174",
+    "frontendDist": "../app/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Workbench Desktop",
+        "width": 1440,
+        "height": 900,
+        "resizable": true
+      }
+    ]
+  }
+}
+

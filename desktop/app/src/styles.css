@@ -1,0 +1,141 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  background: #f4f6fb;
+  color: #101323;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 10% 10%, #ffffff 0%, #eef2ff 40%, #f4f6fb 100%);
+}
+
+.shell {
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid #d8deef;
+  background: #ffffff;
+  border-radius: 12px;
+}
+
+.topbar nav {
+  display: flex;
+  gap: 8px;
+}
+
+.topbar a {
+  text-decoration: none;
+  color: #34405e;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.topbar a.active {
+  background: #e7ecff;
+  color: #1d2b53;
+}
+
+.layout {
+  margin-top: 14px;
+  border: 1px solid #d8deef;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: 260px 1fr 360px;
+  gap: 12px;
+}
+
+.panel {
+  border: 1px solid #dfe5f6;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fbfcff;
+}
+
+.panel h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.muted {
+  color: #66708b;
+  font-size: 12px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-block;
+  border: 1px solid #d8def2;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  margin-right: 6px;
+}
+
+.input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+.input,
+textarea,
+select {
+  width: 100%;
+  border: 1px solid #d2d9f0;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+}
+
+button {
+  border: 1px solid #2c4ecf;
+  background: #3358e0;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+button.secondary {
+  border-color: #cfd7ef;
+  background: #f3f6ff;
+  color: #20305a;
+}
+
+@media (max-width: 1200px) {
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+

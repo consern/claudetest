@@ -59,6 +59,23 @@ pnpm dev:service
 - `POST /api/approvals/:id/approve`
 - `POST /api/approvals/:id/reject`
 
+## Desktop Shell（Phase 1）
+已新增桌面壳目录：
+- `desktop/app`：React + TypeScript 前端（Home / Tasks / Reviews / Settings）
+- `desktop/tauri/src-tauri`：Tauri 壳骨架
+
+前端开发运行：
+```bash
+pnpm --dir desktop/app install
+pnpm dev:desktop
+```
+
+本地联调建议：
+1. 终端 A：`pnpm dev:service`
+2. 终端 B：`pnpm dev:desktop`
+
+前端默认请求本地服务地址：`http://127.0.0.1:4317`
+
 ## 环境变量
 见 [`.env.example`](/E:/code/claudetest/.env.example)
 

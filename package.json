@@ -7,9 +7,11 @@
   "scripts": {
     "dev": "tsx src/cli/index.tsx",
     "dev:service": "tsx src/service/index.ts",
+    "dev:desktop": "pnpm --dir desktop/app exec vite",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/cli/index.js",
     "start:service": "node dist/service/index.js",
+    "build:desktop": "pnpm --dir desktop/app exec tsc -p tsconfig.json && pnpm --dir desktop/app exec vite build",
     "test": "tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
