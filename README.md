@@ -33,8 +33,31 @@
 pnpm install
 cp .env.example .env
 pnpm dev
+pnpm dev:service
 pnpm test
 ```
+
+## 本地 Workbench API（Phase 1）
+启动：
+```bash
+pnpm dev:service
+```
+
+默认地址：`http://127.0.0.1:4317`
+
+核心接口：
+- `GET /api/projects`
+- `POST /api/projects/open`
+- `GET /api/tasks`
+- `POST /api/tasks/start`
+- `GET /api/tasks/:id/state`
+- `GET /api/tasks/:id/telemetry`
+- `GET /api/tasks/:id/audit`
+- `GET /api/reviews`
+- `POST /api/reviews/:taskId/rework`
+- `GET /api/approvals`
+- `POST /api/approvals/:id/approve`
+- `POST /api/approvals/:id/reject`
 
 ## 环境变量
 见 [`.env.example`](/E:/code/claudetest/.env.example)
