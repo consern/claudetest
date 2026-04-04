@@ -6,6 +6,7 @@ import {
   type StreamEnvelope,
   type StreamHealth
 } from '../api/events';
+import { shouldUseFallbackPolling } from './eventReducers';
 
 type StreamKind = 'task' | 'approvals' | 'audit';
 
@@ -43,8 +44,7 @@ export const useEventStore = create<EventStore>((set) => ({
           ...state.streamHealth,
           [kind]: health
         };
-        const fallbackPolling =
-          next.task === 'error' || next.approvals === 'error' || next.audit === 'error';
+        const fallbackPolling = shouldUseFallbackPolling(next);
         return { streamHealth: next, fallbackPolling };
       });
     };
@@ -93,4 +93,3 @@ export const useEventStore = create<EventStore>((set) => ({
     };
   }
 }));
-

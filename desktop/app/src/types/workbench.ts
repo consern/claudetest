@@ -61,6 +61,17 @@ export interface ApiTaskRuntime {
       retryCount?: number;
     }>;
   };
+  audit: Array<{
+    timestamp: string;
+    eventType:
+      | 'tool_call'
+      | 'tool_result'
+      | 'review_finding'
+      | 'rework_created'
+      | 'finding_resolved'
+      | 'blocked';
+    summary: string;
+  }>;
   history: Array<{ id: string; role: string; content: string; createdAt: string }>;
 }
 
@@ -72,4 +83,3 @@ export interface ApiApproval {
   detail: string;
   createdAt: string;
 }
-

@@ -143,7 +143,7 @@ export function ReviewWorkspacePage() {
           <div className="muted">audit stream: {streamHealth.audit}</div>
           <div className="muted">fallback polling: {fallbackPolling ? 'on' : 'off'}</div>
         </div>
-        <AuditTimelineView runtime={currentRuntime} />
+        <AuditTimelineView runtime={currentRuntime} focusText={selected?.title} />
       </div>
     </div>
   );

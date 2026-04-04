@@ -235,6 +235,13 @@ button.secondary {
   background: #f5f8ff;
 }
 
+.audit-focus {
+  color: #1d2b53;
+  font-size: 12px;
+  border-left: 3px solid #6f8cff;
+  padding-left: 8px;
+}
+
 @media (max-width: 1200px) {
   .grid-3 {
     grid-template-columns: 1fr;

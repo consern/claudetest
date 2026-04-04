@@ -6,6 +6,7 @@ import { getReviews } from '../api/reviews';
 import { getSessions } from '../api/sessions';
 import { getTask, getTasks } from '../api/tasks';
 import type { ApiApproval, ApiProject, ApiTask, ApiTaskRuntime } from '../types/workbench';
+import { applyApprovalStreamEvent, applyRuntimeStreamEvent } from './eventReducers';
 
 interface TaskStore {
   projects: ApiProject[];
@@ -43,33 +44,14 @@ export const useTaskStore = create<TaskStore>((set) => ({
   },
   applyStreamEvent: (event) => {
     set((state) => {
-      if (!state.currentRuntime || state.currentRuntime.task.id !== event.taskId) {
-        return { ...state, lastEventTs: event.timestamp };
-      }
-      if (event.type === 'tool_event' && typeof event.payload?.event === 'string') {
-        return {
-          ...state,
-          lastEventTs: event.timestamp,
-          currentRuntime: {
-            ...state.currentRuntime,
-            toolEvents: [...state.currentRuntime.toolEvents, String(event.payload.event)].slice(-200)
-          }
-        };
-      }
-      if (event.type === 'telemetry') {
-        return {
-          ...state,
-          lastEventTs: event.timestamp,
-          currentRuntime: {
-            ...state.currentRuntime,
-            telemetry: {
-              ...state.currentRuntime.telemetry,
-              ...(event.payload as Partial<ApiTaskRuntime['telemetry']>)
-            }
-          }
-        };
-      }
-      return { ...state, lastEventTs: event.timestamp };
+      const nextRuntime = applyRuntimeStreamEvent(state.currentRuntime, event);
+      const nextApprovals = applyApprovalStreamEvent(state.approvals, event);
+      return {
+        ...state,
+        lastEventTs: event.timestamp,
+        currentRuntime: nextRuntime,
+        approvals: nextApprovals
+      };
     });
   }
 }));
