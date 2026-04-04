@@ -3,10 +3,12 @@ import { startTask } from '../api/tasks';
 import { HomeComposer } from '../components/HomeComposer';
 import { useAppStore } from '../store/appStore';
 import { useTaskStore } from '../store/taskStore';
+import { useUiStore } from '../store/uiStore';
 
 export function HomePage() {
   const { projects, tasks, sessions, refreshAll } = useTaskStore();
   const { currentProjectId, setProjectId, selectedMode, setMode, setTaskId } = useAppStore();
+  const { lastStartupNote } = useUiStore();
   const [taskText, setTaskText] = useState('');
 
   useEffect(() => {
@@ -23,6 +25,10 @@ export function HomePage() {
         onTaskText={setTaskText}
         onMode={setMode}
         onProject={(id) => setProjectId(id || undefined)}
+        onQuickAction={(preset, mode) => {
+          setTaskText(preset);
+          setMode(mode);
+        }}
         onStart={async () => {
           if (!taskText.trim()) {
             return;
@@ -37,6 +43,10 @@ export function HomePage() {
           await refreshAll();
         }}
       />
+      <div className="panel">
+        <h3>Startup</h3>
+        <div className="muted">{lastStartupNote}</div>
+      </div>
       <div className="panel">
         <h3>Recent Tasks</h3>
         <div className="list">

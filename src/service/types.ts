@@ -47,3 +47,18 @@ export interface ServiceTaskRuntime {
   }>;
 }
 
+export type ServiceStreamEventType =
+  | 'task_state'
+  | 'telemetry'
+  | 'tool_event'
+  | 'audit_event'
+  | 'approval_added'
+  | 'approval_resolved'
+  | 'review_rework';
+
+export interface ServiceStreamEvent {
+  type: ServiceStreamEventType;
+  taskId: string;
+  timestamp: string;
+  payload?: Record<string, unknown>;
+}

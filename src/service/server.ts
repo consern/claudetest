@@ -1,10 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { URL } from 'node:url';
 import { WorkbenchServiceManager } from './manager.js';
+import type { ServiceStreamEvent } from './types.js';
 
 function sendJson(res: ServerResponse, code: number, body: unknown): void {
   res.statusCode = code;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.end(JSON.stringify(body));
 }
 
@@ -23,6 +25,20 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   }
 }
 
+function writeSseHeaders(res: ServerResponse): void {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  });
+}
+
+function writeSseEvent(res: ServerResponse, event: ServiceStreamEvent): void {
+  res.write(`event: ${event.type}\n`);
+  res.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
 export function createWorkbenchApiServer(
   manager: WorkbenchServiceManager,
   port = 4317
@@ -30,6 +46,15 @@ export function createWorkbenchApiServer(
   const server = createServer(async (req, res) => {
     if (!req.url || !req.method) {
       sendJson(res, 400, { error: 'Invalid request' });
+      return;
+    }
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      });
+      res.end();
       return;
     }
 
@@ -90,6 +115,26 @@ export function createWorkbenchApiServer(
       return;
     }
 
+    const taskEventsStreamMatch = path.match(/^\/api\/tasks\/([^/]+)\/events$/);
+    if (req.method === 'GET' && taskEventsStreamMatch) {
+      const taskId = taskEventsStreamMatch[1];
+      writeSseHeaders(res);
+      const dispose = manager.subscribeStream((event) => {
+        if (event.taskId !== taskId) {
+          return;
+        }
+        writeSseEvent(res, event);
+      });
+      const ping = setInterval(() => {
+        res.write(': ping\n\n');
+      }, 15000);
+      req.on('close', () => {
+        clearInterval(ping);
+        dispose();
+      });
+      return;
+    }
+
     const taskCancelMatch = path.match(/^\/api\/tasks\/([^/]+)\/cancel$/);
     if (req.method === 'POST' && taskCancelMatch) {
       const task = await manager.cancelTask(taskCancelMatch[1]);
@@ -98,6 +143,29 @@ export function createWorkbenchApiServer(
         return;
       }
       sendJson(res, 200, { task });
+      return;
+    }
+
+    const taskApprovalsStreamMatch = path.match(/^\/api\/tasks\/([^/]+)\/approvals\/stream$/);
+    if (req.method === 'GET' && taskApprovalsStreamMatch) {
+      const taskId = taskApprovalsStreamMatch[1];
+      writeSseHeaders(res);
+      const dispose = manager.subscribeStream((event) => {
+        if (event.taskId !== taskId) {
+          return;
+        }
+        if (event.type !== 'approval_added' && event.type !== 'approval_resolved') {
+          return;
+        }
+        writeSseEvent(res, event);
+      });
+      const ping = setInterval(() => {
+        res.write(': ping\n\n');
+      }, 15000);
+      req.on('close', () => {
+        clearInterval(ping);
+        dispose();
+      });
       return;
     }
 
@@ -210,9 +278,31 @@ export function createWorkbenchApiServer(
       return;
     }
 
+    const auditStreamMatch = path.match(/^\/api\/tasks\/([^/]+)\/audit\/stream$/);
+    if (req.method === 'GET' && auditStreamMatch) {
+      const taskId = auditStreamMatch[1];
+      writeSseHeaders(res);
+      const dispose = manager.subscribeStream((event) => {
+        if (event.taskId !== taskId) {
+          return;
+        }
+        if (event.type !== 'audit_event' && event.type !== 'review_rework') {
+          return;
+        }
+        writeSseEvent(res, event);
+      });
+      const ping = setInterval(() => {
+        res.write(': ping\n\n');
+      }, 15000);
+      req.on('close', () => {
+        clearInterval(ping);
+        dispose();
+      });
+      return;
+    }
+
     sendJson(res, 404, { error: 'Not found' });
   });
 
   return server;
 }
-

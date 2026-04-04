@@ -1,4 +1,5 @@
-﻿import { useEffect } from 'react';
+import { useEffect } from 'react';
+import { openTaskApprovalsStream, openTaskEventsStream } from '../api/events';
 import { ApprovalQueue } from '../components/ApprovalQueue';
 import { CurrentActionPanel } from '../components/CurrentActionPanel';
 import { ImplementationStepsPanel } from '../components/ImplementationStepsPanel';
@@ -17,7 +18,8 @@ export function TaskWorkspacePage() {
     approvals,
     currentRuntime,
     refreshAll,
-    refreshTaskRuntime
+    refreshTaskRuntime,
+    applyStreamEvent
   } = useTaskStore();
 
   useEffect(() => {
@@ -29,12 +31,28 @@ export function TaskWorkspacePage() {
       return;
     }
     void refreshTaskRuntime(currentTaskId);
+    const closeTaskStream = openTaskEventsStream(currentTaskId, (event) => {
+      applyStreamEvent(event);
+      if (event.type === 'task_state' || event.type === 'review_rework') {
+        void refreshTaskRuntime(currentTaskId);
+      }
+      if (event.type === 'approval_added' || event.type === 'approval_resolved') {
+        void refreshAll();
+      }
+    });
+    const closeApprovalStream = openTaskApprovalsStream(currentTaskId, () => {
+      void refreshAll();
+    });
     const timer = window.setInterval(() => {
       void refreshTaskRuntime(currentTaskId);
       void refreshAll();
-    }, 1500);
-    return () => window.clearInterval(timer);
-  }, [currentTaskId, refreshTaskRuntime, refreshAll]);
+    }, 6000);
+    return () => {
+      closeTaskStream();
+      closeApprovalStream();
+      window.clearInterval(timer);
+    };
+  }, [currentTaskId, refreshTaskRuntime, refreshAll, applyStreamEvent]);
 
   const currentProject = projects.find((project) => project.id === currentRuntime?.task.projectId);
 
@@ -47,7 +65,7 @@ export function TaskWorkspacePage() {
         onSelectTask={setTaskId}
       />
       <div className="list">
-        <MainThreadView runtime={currentRuntime} />
+        <MainThreadView runtime={currentRuntime} approvals={approvals} />
         <ApprovalQueue approvals={approvals} onChanged={() => void refreshAll()} />
       </div>
       <div className="list">

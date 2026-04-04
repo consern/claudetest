@@ -1,25 +1,45 @@
-﻿import type { ApiTaskRuntime } from '../types/workbench';
+import type { ApiTaskRuntime } from '../types/workbench';
 
-function renderRows(
-  title: string,
-  rows:
-    | Array<{ id: string; title: string; category: string; confidence: number; whyItMatters: string; evidence: string; relatedPaths: string[] }>
-    | undefined
-) {
+type FindingRow = {
+  id: string;
+  title: string;
+  category: string;
+  confidence: number;
+  whyItMatters: string;
+  evidence: string;
+  relatedPaths: string[];
+};
+
+function renderRows(input: {
+  title: string;
+  rows: FindingRow[] | undefined;
+  selectedFindingId?: string;
+  statusByFindingId: Record<string, string>;
+  onSelectFinding: (id: string) => void;
+}) {
   return (
     <div className="panel">
-      <h3>{title}</h3>
+      <h3>{input.title}</h3>
       <div className="list">
-        {rows?.length ? (
-          rows.map((finding) => (
-            <div key={finding.id}>
+        {input.rows?.length ? (
+          input.rows.map((finding) => (
+            <button
+              key={finding.id}
+              className="secondary finding-card"
+              style={{
+                textAlign: 'left',
+                borderColor: input.selectedFindingId === finding.id ? '#2c4ecf' : '#d4ddf6'
+              }}
+              onClick={() => input.onSelectFinding(finding.id)}
+            >
               <div>
                 {finding.title} [{finding.category}] {Math.round(finding.confidence * 100)}%
               </div>
+              <div className="muted">status: {input.statusByFindingId[finding.id] ?? 'open'}</div>
               <div className="muted">why: {finding.whyItMatters}</div>
               <div className="muted">evidence: {finding.evidence}</div>
               <div className="muted">paths: {finding.relatedPaths.join(', ') || 'none'}</div>
-            </div>
+            </button>
           ))
         ) : (
           <div className="muted">none</div>
@@ -29,12 +49,40 @@ function renderRows(
   );
 }
 
-export function DecisionBucketsView({ runtime }: { runtime?: ApiTaskRuntime }) {
+export function DecisionBucketsView(input: {
+  runtime?: ApiTaskRuntime;
+  selectedFindingId?: string;
+  onSelectFinding?: (id: string) => void;
+}) {
+  const lifecycle = input.runtime?.workflowState?.findingLifecycle ?? [];
+  const statusByFindingId = lifecycle.reduce<Record<string, string>>((acc, item) => {
+    acc[item.findingId] = item.status;
+    return acc;
+  }, {});
+  const onSelect = input.onSelectFinding ?? (() => {});
   return (
     <div className="list">
-      {renderRows('Fix Now', runtime?.workflowState?.decisionBuckets.fixNow)}
-      {renderRows('Fix Later', runtime?.workflowState?.decisionBuckets.fixLater)}
-      {renderRows('Ignore', runtime?.workflowState?.decisionBuckets.ignore)}
+      {renderRows({
+        title: 'Fix Now',
+        rows: input.runtime?.workflowState?.decisionBuckets.fixNow,
+        selectedFindingId: input.selectedFindingId,
+        statusByFindingId,
+        onSelectFinding: onSelect
+      })}
+      {renderRows({
+        title: 'Fix Later',
+        rows: input.runtime?.workflowState?.decisionBuckets.fixLater,
+        selectedFindingId: input.selectedFindingId,
+        statusByFindingId,
+        onSelectFinding: onSelect
+      })}
+      {renderRows({
+        title: 'Ignore',
+        rows: input.runtime?.workflowState?.decisionBuckets.ignore,
+        selectedFindingId: input.selectedFindingId,
+        statusByFindingId,
+        onSelectFinding: onSelect
+      })}
     </div>
   );
 }

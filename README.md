@@ -53,6 +53,9 @@ pnpm dev:service
 - `GET /api/tasks/:id/state`
 - `GET /api/tasks/:id/telemetry`
 - `GET /api/tasks/:id/audit`
+- `GET /api/tasks/:id/events` (SSE)
+- `GET /api/tasks/:id/approvals/stream` (SSE)
+- `GET /api/tasks/:id/audit/stream` (SSE)
 - `GET /api/reviews`
 - `POST /api/reviews/:taskId/rework`
 - `GET /api/approvals`
@@ -64,17 +67,23 @@ pnpm dev:service
 - `desktop/app`：React + TypeScript 前端（Home / Tasks / Reviews / Settings）
 - `desktop/tauri/src-tauri`：Tauri 壳骨架
 
-前端开发运行：
+一键桌面联调（推荐）：
 ```bash
-pnpm --dir desktop/app install
 pnpm dev:desktop
 ```
 
 本地联调建议：
-1. 终端 A：`pnpm dev:service`
-2. 终端 B：`pnpm dev:desktop`
+1. 首次安装前端依赖：`pnpm --dir desktop/app install`
+2. 一键启动：`pnpm dev:desktop`
+3. 仅前端调试：`pnpm dev:desktop:web`
 
 前端默认请求本地服务地址：`http://127.0.0.1:4317`
+
+可选：连同 Tauri 壳一起启动（需要本机已安装 tauri/cargo）：
+```bash
+set DESKTOP_WITH_TAURI=1
+pnpm dev:desktop
+```
 
 ## 环境变量
 见 [`.env.example`](/E:/code/claudetest/.env.example)

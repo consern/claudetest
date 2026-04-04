@@ -8,6 +8,18 @@ interface Props {
 }
 
 export function TaskSidebar(props: Props) {
+  const badge = (status: ApiTask['status']): string => {
+    if (status === 'blocked') {
+      return 'blocked';
+    }
+    if (status === 'reviewing') {
+      return 'reviewing';
+    }
+    if (status === 'running') {
+      return 'running';
+    }
+    return status;
+  };
   return (
     <div className="panel">
       <h3>Tasks</h3>
@@ -27,6 +39,7 @@ export function TaskSidebar(props: Props) {
             <div className="muted">
               {task.mode} | {task.status}
             </div>
+            <div className={`task-badge status-${task.status}`}>{badge(task.status)}</div>
           </button>
         ))}
       </div>

@@ -13,6 +13,7 @@ import type { ToolApprovalRequest } from '../types/tool.js';
 import type {
   ServiceApproval,
   ServiceProject,
+  ServiceStreamEvent,
   ServiceTask,
   ServiceTaskRuntime
 } from './types.js';
@@ -61,6 +62,8 @@ export class WorkbenchServiceManager {
 
   private readonly pendingApprovals = new Map<string, PendingApprovalResolver>();
 
+  private readonly streamListeners = new Set<(event: ServiceStreamEvent) => void>();
+
   constructor(envInput: NodeJS.ProcessEnv = process.env) {
     this.env = envSchema.parse(envInput);
     this.provider = createProvider(this.env);
@@ -75,6 +78,23 @@ export class WorkbenchServiceManager {
 
   listProjects(): ServiceProject[] {
     return [...this.projects.values()];
+  }
+
+  subscribeStream(listener: (event: ServiceStreamEvent) => void): () => void {
+    this.streamListeners.add(listener);
+    return () => {
+      this.streamListeners.delete(listener);
+    };
+  }
+
+  private emitStream(event: ServiceStreamEvent): void {
+    for (const listener of this.streamListeners) {
+      try {
+        listener(event);
+      } catch {
+        // ignore a broken subscriber and keep broadcasting
+      }
+    }
   }
 
   openProject(input: { name?: string; rootPath: string }): ServiceProject {
@@ -127,6 +147,12 @@ export class WorkbenchServiceManager {
       audit: []
     };
     this.tasks.set(task.id, runtime);
+    this.emitStream({
+      type: 'task_state',
+      taskId: task.id,
+      timestamp: nowIso(),
+      payload: { status: task.status, mode: task.mode }
+    });
     void this.runTask(runtime);
     return task;
   }
@@ -143,6 +169,18 @@ export class WorkbenchServiceManager {
       eventType: 'blocked',
       summary: 'Task cancelled by user'
     });
+    this.emitStream({
+      type: 'audit_event',
+      taskId: runtime.task.id,
+      timestamp: nowIso(),
+      payload: { summary: 'Task cancelled by user' }
+    });
+    this.emitStream({
+      type: 'task_state',
+      taskId: runtime.task.id,
+      timestamp: nowIso(),
+      payload: { status: runtime.task.status, mode: runtime.task.mode }
+    });
     return runtime.task;
   }
 
@@ -153,6 +191,12 @@ export class WorkbenchServiceManager {
     }
     runtime.task.status = 'queued';
     runtime.task.updatedAt = nowIso();
+    this.emitStream({
+      type: 'task_state',
+      taskId: runtime.task.id,
+      timestamp: nowIso(),
+      payload: { status: runtime.task.status, mode: runtime.task.mode }
+    });
     void this.runTask(runtime);
     return runtime.task;
   }
@@ -170,6 +214,12 @@ export class WorkbenchServiceManager {
     }
     this.pendingApprovals.delete(id);
     pending.resolve(true);
+    this.emitStream({
+      type: 'approval_resolved',
+      taskId: pending.approval.taskId,
+      timestamp: nowIso(),
+      payload: { approvalId: id, decision: 'approve' }
+    });
     return true;
   }
 
@@ -180,6 +230,12 @@ export class WorkbenchServiceManager {
     }
     this.pendingApprovals.delete(id);
     pending.resolve(false);
+    this.emitStream({
+      type: 'approval_resolved',
+      taskId: pending.approval.taskId,
+      timestamp: nowIso(),
+      payload: { approvalId: id, decision: 'reject' }
+    });
     return true;
   }
 
@@ -232,6 +288,18 @@ export class WorkbenchServiceManager {
     row.task.mode = 'rework';
     row.task.status = 'reviewing';
     row.task.updatedAt = nowIso();
+    this.emitStream({
+      type: 'review_rework',
+      taskId: row.task.id,
+      timestamp: nowIso(),
+      payload: { mode: row.task.mode, status: row.task.status }
+    });
+    this.emitStream({
+      type: 'task_state',
+      taskId: row.task.id,
+      timestamp: nowIso(),
+      payload: { status: row.task.status, mode: row.task.mode }
+    });
     return true;
   }
 
@@ -278,6 +346,12 @@ export class WorkbenchServiceManager {
   private async runTask(runtime: ServiceTaskRuntime): Promise<void> {
     runtime.task.status = 'running';
     runtime.task.updatedAt = nowIso();
+    this.emitStream({
+      type: 'task_state',
+      taskId: runtime.task.id,
+      timestamp: nowIso(),
+      payload: { status: runtime.task.status, mode: runtime.task.mode }
+    });
     const approval = new ApprovalService((request: ToolApprovalRequest) =>
       new Promise<boolean>((resolveApproval) => {
         const approvalRow: ServiceApproval = {
@@ -294,12 +368,28 @@ export class WorkbenchServiceManager {
             resolveApproval(decision);
           }
         });
+        this.emitStream({
+          type: 'approval_added',
+          taskId: runtime.task.id,
+          timestamp: nowIso(),
+          payload: {
+            approvalId: approvalRow.id,
+            kind: approvalRow.kind,
+            title: approvalRow.title
+          }
+        });
       })
     );
 
     try {
       const userMsg = message('user', runtime.task.title);
       runtime.history = appendHistory(runtime.history, userMsg);
+      this.emitStream({
+        type: 'task_state',
+        taskId: runtime.task.id,
+        timestamp: nowIso(),
+        payload: { historySize: runtime.history.length }
+      });
       const toolContext = {
         approval,
         workspaceRoot: this.workspaceRoot,
@@ -312,6 +402,12 @@ export class WorkbenchServiceManager {
         runtime.history = appendHistory(runtime.history, message('assistant', commandOut));
         runtime.task.status = 'completed';
         runtime.task.updatedAt = nowIso();
+        this.emitStream({
+          type: 'task_state',
+          taskId: runtime.task.id,
+          timestamp: nowIso(),
+          payload: { status: runtime.task.status, mode: runtime.task.mode }
+        });
       } else {
         const result = await runAgentLoop({
           userText: runtime.task.title,
@@ -328,9 +424,34 @@ export class WorkbenchServiceManager {
               eventType: toEventType(event),
               summary: event
             });
+            this.emitStream({
+              type: 'tool_event',
+              taskId: runtime.task.id,
+              timestamp: nowIso(),
+              payload: { event }
+            });
+            this.emitStream({
+              type: 'audit_event',
+              taskId: runtime.task.id,
+              timestamp: nowIso(),
+              payload: { eventType: toEventType(event), summary: event }
+            });
           },
           onTelemetry: (telemetry) => {
             runtime.telemetry = telemetry;
+            this.emitStream({
+              type: 'telemetry',
+              taskId: runtime.task.id,
+              timestamp: nowIso(),
+              payload: {
+                activePhase: telemetry.activePhase,
+                activeTool: telemetry.activeTool,
+                activeSubagent: telemetry.activeSubagent,
+                activeImplementationStep: telemetry.activeImplementationStep,
+                blockedReason: telemetry.blockedReason,
+                round: telemetry.round
+              }
+            });
           }
         });
         runtime.history = appendHistory(runtime.history, message('assistant', result.text));
@@ -347,6 +468,12 @@ export class WorkbenchServiceManager {
               ? 'reviewing'
               : 'completed';
         runtime.task.updatedAt = nowIso();
+        this.emitStream({
+          type: 'task_state',
+          taskId: runtime.task.id,
+          timestamp: nowIso(),
+          payload: { status: runtime.task.status, mode: runtime.task.mode }
+        });
       }
 
       await saveSession(this.env.SESSION_DIR, {
@@ -366,7 +493,21 @@ export class WorkbenchServiceManager {
         eventType: 'blocked',
         summary: `Task failed: ${error instanceof Error ? error.message : String(error)}`
       });
+      this.emitStream({
+        type: 'audit_event',
+        taskId: runtime.task.id,
+        timestamp: nowIso(),
+        payload: {
+          eventType: 'blocked',
+          summary: `Task failed: ${error instanceof Error ? error.message : String(error)}`
+        }
+      });
+      this.emitStream({
+        type: 'task_state',
+        taskId: runtime.task.id,
+        timestamp: nowIso(),
+        payload: { status: runtime.task.status, mode: runtime.task.mode }
+      });
     }
   }
 }
-
