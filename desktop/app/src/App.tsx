@@ -10,15 +10,15 @@ function linkClass(input: { isActive: boolean }): string {
 
 export default function App() {
   return (
-    <div className="shell">
-      <header className="topbar">
-        <strong>Workbench Desktop</strong>
-        <nav>
-          <NavLink className={linkClass} to="/home">
-            Home
-          </NavLink>
+    <div className="shell shell-app">
+      <aside className="app-sidebar">
+        <div className="brand-mark">AI</div>
+        <nav className="app-nav">
           <NavLink className={linkClass} to="/tasks">
-            Tasks
+            Code
+          </NavLink>
+          <NavLink className={linkClass} to="/home">
+            Sessions
           </NavLink>
           <NavLink className={linkClass} to="/reviews">
             Reviews
@@ -27,15 +27,16 @@ export default function App() {
             Settings
           </NavLink>
         </nav>
-      </header>
-      <Routes>
-        <Route path="/home" element={<HomePage />} />
-        <Route path="/tasks" element={<TaskWorkspacePage />} />
-        <Route path="/reviews" element={<ReviewWorkspacePage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="*" element={<Navigate to="/home" replace />} />
-      </Routes>
+      </aside>
+      <main className="app-content">
+        <Routes>
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/tasks" element={<TaskWorkspacePage />} />
+          <Route path="/reviews" element={<ReviewWorkspacePage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="*" element={<Navigate to="/home" replace />} />
+        </Routes>
+      </main>
     </div>
   );
 }
-

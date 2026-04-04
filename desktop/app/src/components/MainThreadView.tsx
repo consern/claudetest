@@ -1,4 +1,4 @@
-import type { ApiApproval, ApiTaskRuntime } from '../types/workbench';
+﻿import type { ApiApproval, ApiTaskRuntime } from '../types/workbench';
 
 interface Props {
   runtime?: ApiTaskRuntime;
@@ -24,6 +24,36 @@ export function MainThreadView({ runtime, approvals }: Props) {
         </section>
 
         <section className="panel">
+          <h3>Current Step Results</h3>
+          <div className="list">
+            {runtime?.workflowState?.stepExecutionResults?.length ? (
+              runtime.workflowState.stepExecutionResults.slice(-5).reverse().map((step) => (
+                <div key={step.stepId} className="step-item">
+                  <div>
+                    {step.stepId} · writes {step.writesApplied}/{step.patchesProposed}
+                  </div>
+                  <div className="muted">{step.summary}</div>
+                </div>
+              ))
+            ) : (
+              <div className="muted">No step execution results yet.</div>
+            )}
+          </div>
+        </section>
+
+        <section className={`panel ${approvals.length > 0 ? 'panel-blocked' : ''}`}>
+          <h3>Approvals</h3>
+          <div className="list">
+            {approvals.length === 0 ? <div className="muted">No pending approvals</div> : null}
+            {approvals.map((approval) => (
+              <div key={approval.id} className={approvals.length > 0 ? 'blocked-banner' : 'muted'}>
+                {approval.kind}: {approval.title}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel">
           <h3>Tool Events</h3>
           <div className="list">
             {runtime?.toolEvents.slice(-10).map((event, idx) => (
@@ -33,27 +63,7 @@ export function MainThreadView({ runtime, approvals }: Props) {
             )) ?? <div className="muted">No tool events</div>}
           </div>
         </section>
-
-        <section className="panel">
-          <h3>Approvals</h3>
-          <div className="list">
-            {approvals.length === 0 ? <div className="muted">No pending approvals</div> : null}
-            {approvals.map((approval) => (
-              <div key={approval.id} className="muted">
-                {approval.kind}: {approval.title}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel">
-          <h3>Diff / Patch Preview</h3>
-          <div className="muted">
-            Phase 2 placeholder: wire preview_diff snapshots from execution results.
-          </div>
-        </section>
       </div>
     </div>
   );
 }
-

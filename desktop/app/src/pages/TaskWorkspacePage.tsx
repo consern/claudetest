@@ -66,9 +66,9 @@ export function TaskWorkspacePage() {
         onSelectTask={setTaskId}
       />
       <div className="list">
+        <ApprovalQueue approvals={approvals} onChanged={() => void refreshApprovals()} />
         <MainThreadView runtime={currentRuntime} approvals={approvals} />
         <StreamHealthIndicator streamHealth={streamHealth} fallbackPolling={fallbackPolling} />
-        <ApprovalQueue approvals={approvals} onChanged={() => void refreshApprovals()} />
       </div>
       <div className="list">
         <CurrentActionPanel runtime={currentRuntime} approvalsCount={approvals.length} />

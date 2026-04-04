@@ -1,4 +1,4 @@
-import type { AgentMode } from '../types/workbench';
+﻿import type { AgentMode } from '../types/workbench';
 
 interface Props {
   taskText: string;
@@ -15,10 +15,9 @@ interface Props {
 export function HomeComposer(props: Props) {
   return (
     <div className="panel home-focus">
-      <h3>What should the workbench do next?</h3>
-      <p className="muted">
-        Start from one concrete task. You can refine implementation and review decisions after execution begins.
-      </p>
+      <h2>What should we build next?</h2>
+      <p className="hero-sub">Describe one clear objective. Keep it concrete and actionable.</p>
+
       <div className="list">
         <div className="row">
           <div style={{ flex: 1 }}>
@@ -43,40 +42,41 @@ export function HomeComposer(props: Props) {
             </select>
           </div>
         </div>
+
         <div>
           <div className="muted">Task</div>
           <textarea
-            rows={5}
+            rows={6}
             value={props.taskText}
             onChange={(e) => props.onTaskText(e.target.value)}
-            placeholder="Describe the task outcome, target files, and constraints."
+            placeholder="Describe the target outcome, key constraints, and where changes should land."
           />
         </div>
+
         <div className="row">
-          <div>
+          <div className="home-actions">
             <button
-              className="secondary chip-btn"
-              onClick={() => props.onQuickAction('Start Feature Workflow for this project', 'feature-dev')}
+              className="secondary"
+              onClick={() => props.onQuickAction('Start feature implementation for this project', 'feature-dev')}
             >
-              Start Feature Workflow
+              Feature
             </button>
             <button
-              className="secondary chip-btn"
-              onClick={() => props.onQuickAction('Review latest code changes and propose fixes', 'review')}
+              className="secondary"
+              onClick={() => props.onQuickAction('Review latest changes and propose fixes', 'review')}
             >
-              Review Latest Changes
+              Review
             </button>
             <button
-              className="secondary chip-btn"
-              onClick={() => props.onQuickAction('Continue last blocked task', 'rework')}
+              className="secondary"
+              onClick={() => props.onQuickAction('Continue the blocked task and resolve blockers', 'rework')}
             >
-              Resume Blocked Task
+              Resume
             </button>
           </div>
-          <button onClick={props.onStart}>Start Task</button>
+          <button onClick={props.onStart}>Start Work</button>
         </div>
       </div>
     </div>
   );
 }
-

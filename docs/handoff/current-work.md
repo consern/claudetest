@@ -53,6 +53,18 @@
   - Task/Review 页面的 Realtime 区块改为复用 `StreamHealthIndicator`。
   - 指标统一显示：`task/approval/audit` stream health + fallback polling 状态。
   - 在退化态显示 `Realtime degraded · fallback polling active`，增强用户可见性。
+- 本轮综合改造（2026-04-04，第五轮）：
+  - 壳层导航改为左侧窄栏布局，导航语义调整为 `Code / Sessions / Reviews / Settings`。
+  - 全局视觉改为原创浅灰玻璃态风格（去品牌复刻、低噪音、强主焦点）。
+  - Home 重构为“大输入区优先 + recent 下沉辅助”：
+    - `HomeComposer` 改为 hero 主区
+    - `HomePage` 新增 `Needs Attention` 概览与 `Recent Reviews`
+  - Task 工作区强化：
+    - `ApprovalQueue` 上移并强化阻塞提示
+    - `MainThreadView` 补齐最小可用 `Current Step Results`（替换原 diff 占位）
+  - Review 工作区强化：
+    - selected finding 增加 `why/evidence/relatedPaths` 决策字段（从 decision buckets 反查）。
+  - 目标是把“Figma 灵感风格 + phase-5 文档方向”合并落地为一版可运行改造。
 
 ## 4) 关键架构决定
 - 前端采用“统一事件层 + store 路由”的模式：
@@ -64,11 +76,16 @@
 - Review 决策面板保持“selected finding 为主焦点”的信息层次，不回退为平铺列表。
 
 ## 5) 当前状态
-- 代码已推送到 `origin/codex/terminal-client-mvp`，最新提交：`507f969`。
+- 代码已推送到 `origin/codex/terminal-client-mvp`，最新提交：`d38fad8`。
 - 工作区当前存在未提交改动：
-  - `desktop/app/src/components/StreamHealthIndicator.tsx`（新增）
-  - `desktop/app/src/pages/TaskWorkspacePage.tsx`（接入统一 realtime 指示器）
-  - `desktop/app/src/pages/ReviewWorkspacePage.tsx`（接入统一 realtime 指示器）
+  - `desktop/app/src/App.tsx`（壳层与导航重构）
+  - `desktop/app/src/styles.css`（全局风格重构）
+  - `desktop/app/src/components/HomeComposer.tsx`（hero 输入区重构）
+  - `desktop/app/src/pages/HomePage.tsx`（首页结构重排）
+  - `desktop/app/src/components/MainThreadView.tsx`（补 step result 与层级重排）
+  - `desktop/app/src/components/ApprovalQueue.tsx`（审批阻塞提示增强）
+  - `desktop/app/src/pages/TaskWorkspacePage.tsx`（审批区上移）
+  - `desktop/app/src/pages/ReviewWorkspacePage.tsx`（selected finding 决策信息增强）
 - 最近一次回归通过：
   - `pnpm -s build`
   - `pnpm -s test`（16/16）

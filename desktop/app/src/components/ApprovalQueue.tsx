@@ -8,7 +8,7 @@ interface Props {
 
 export function ApprovalQueue({ approvals, onChanged }: Props) {
   return (
-    <div className="panel">
+    <div className={`panel ${approvals.length > 0 ? 'panel-blocked' : ''}`}>
       <h3>Approval Queue</h3>
       <div className="list">
         {approvals.length === 0 ? <div className="muted">No pending approvals</div> : null}
@@ -17,6 +17,7 @@ export function ApprovalQueue({ approvals, onChanged }: Props) {
             <div>{row.title}</div>
             <div className="muted">{row.kind}</div>
             <div className="muted">{row.detail}</div>
+            {approvals.length > 0 ? <div className="blocked-banner">Execution is waiting for your approval</div> : null}
             <div className="row">
               <button
                 className="secondary"
@@ -42,4 +43,3 @@ export function ApprovalQueue({ approvals, onChanged }: Props) {
     </div>
   );
 }
-

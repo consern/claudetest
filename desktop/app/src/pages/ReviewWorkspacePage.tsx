@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+﻿import { useEffect, useMemo } from 'react';
 import { triggerRework } from '../api/reviews';
 import { ApprovalQueue } from '../components/ApprovalQueue';
 import { AuditTimelineView } from '../components/AuditTimelineView';
@@ -22,8 +22,7 @@ export function ReviewWorkspacePage() {
     refreshReviews,
     refreshTaskRuntime,
     applyStreamEvent
-  } =
-    useTaskStore();
+  } = useTaskStore();
 
   useEffect(() => {
     void refreshAll();
@@ -91,6 +90,18 @@ export function ReviewWorkspacePage() {
     };
   }, [currentRuntime]);
 
+  const selectedDecision = useMemo(() => {
+    if (!currentRuntime?.workflowState || !selected?.findingId) {
+      return undefined;
+    }
+    const allRows = [
+      ...(currentRuntime.workflowState.decisionBuckets.fixNow ?? []),
+      ...(currentRuntime.workflowState.decisionBuckets.fixLater ?? []),
+      ...(currentRuntime.workflowState.decisionBuckets.ignore ?? [])
+    ];
+    return allRows.find((row) => row.id === selected.findingId);
+  }, [currentRuntime, selected?.findingId]);
+
   return (
     <div className="layout grid-3">
       <div className="panel list">
@@ -132,6 +143,9 @@ export function ReviewWorkspacePage() {
               <div className="muted">files: {selected.relatedFiles.join(', ') || 'none'}</div>
               <div className="muted">steps: {selected.linkedStepIds.join(', ') || 'none'}</div>
               <div className="muted">note: {selected.resolutionNote ?? 'none'}</div>
+              <div className="muted">why: {selectedDecision?.whyItMatters ?? 'none'}</div>
+              <div className="muted">evidence: {selectedDecision?.evidence ?? 'none'}</div>
+              <div className="muted">paths: {selectedDecision?.relatedPaths.join(', ') || 'none'}</div>
             </div>
           ) : null}
           {currentTaskId ? (

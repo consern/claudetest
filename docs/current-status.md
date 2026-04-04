@@ -2,11 +2,16 @@
 
 - 阶段：Desktop phase-3 持续迭代中（已完成启动链路统一、核心页面产品化增强、事件流主导基础落地）。
 - 分支：`codex/terminal-client-mvp`
-- 最新已推送提交：`507f969`
+- 最新已推送提交：`d38fad8`
 - 本地未提交改动：
-  - `desktop/app/src/components/StreamHealthIndicator.tsx`（新增统一 realtime 状态组件）
-  - `desktop/app/src/pages/TaskWorkspacePage.tsx`（复用 realtime 状态组件）
-  - `desktop/app/src/pages/ReviewWorkspacePage.tsx`（复用 realtime 状态组件）
+  - `desktop/app/src/App.tsx`（左侧窄栏导航）
+  - `desktop/app/src/styles.css`（浅灰玻璃态原创风格重构）
+  - `desktop/app/src/components/HomeComposer.tsx`（首页 hero 输入区重构）
+  - `desktop/app/src/pages/HomePage.tsx`（主输入优先 + attention/recent 下沉）
+  - `desktop/app/src/components/MainThreadView.tsx`（step result 可见化 + 层级重排）
+  - `desktop/app/src/components/ApprovalQueue.tsx`（审批阻塞提示增强）
+  - `desktop/app/src/pages/TaskWorkspacePage.tsx`（审批区上移）
+  - `desktop/app/src/pages/ReviewWorkspacePage.tsx`（selected finding 决策信息增强）
 - 当前构建/测试状态：
   - `pnpm -s build` 通过
   - `pnpm -s test` 通过（21/21）
