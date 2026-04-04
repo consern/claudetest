@@ -12,7 +12,15 @@ export function ReviewWorkspacePage() {
   const { currentTaskId, setTaskId } = useAppStore();
   const { selectedFindingId, setSelectedFindingId } = useReviewStore();
   const { fallbackPolling, streamHealth, startTaskStreams } = useEventStore();
-  const { reviews, approvals, currentRuntime, refreshAll, refreshTaskRuntime, applyStreamEvent } =
+  const {
+    reviews,
+    approvals,
+    currentRuntime,
+    refreshAll,
+    refreshApprovals,
+    refreshTaskRuntime,
+    applyStreamEvent
+  } =
     useTaskStore();
 
   useEffect(() => {
@@ -136,7 +144,7 @@ export function ReviewWorkspacePage() {
         </div>
       </div>
       <div className="list">
-        <ApprovalQueue approvals={approvals} onChanged={() => void refreshAll()} />
+        <ApprovalQueue approvals={approvals} onChanged={() => void refreshApprovals()} />
         <div className="panel">
           <h3>Realtime</h3>
           <div className="muted">task stream: {streamHealth.task}</div>

@@ -19,6 +19,7 @@ export function TaskWorkspacePage() {
     approvals,
     currentRuntime,
     refreshAll,
+    refreshApprovals,
     refreshTaskRuntime,
     applyStreamEvent
   } = useTaskStore();
@@ -38,7 +39,6 @@ export function TaskWorkspacePage() {
       },
       onImportantRefresh: () => {
         void refreshTaskRuntime(currentTaskId);
-        void refreshAll();
       }
     });
     const timer = window.setInterval(() => {
@@ -72,7 +72,7 @@ export function TaskWorkspacePage() {
           <div className="muted">approval stream: {streamHealth.approvals}</div>
           <div className="muted">fallback polling: {fallbackPolling ? 'on' : 'off'}</div>
         </div>
-        <ApprovalQueue approvals={approvals} onChanged={() => void refreshAll()} />
+        <ApprovalQueue approvals={approvals} onChanged={() => void refreshApprovals()} />
       </div>
       <div className="list">
         <CurrentActionPanel runtime={currentRuntime} approvalsCount={approvals.length} />
