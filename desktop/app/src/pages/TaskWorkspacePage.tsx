@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { openTaskApprovalsStream, openTaskEventsStream } from '../api/events';
 import { ApprovalQueue } from '../components/ApprovalQueue';
 import { CurrentActionPanel } from '../components/CurrentActionPanel';
 import { ImplementationStepsPanel } from '../components/ImplementationStepsPanel';
@@ -8,10 +7,12 @@ import { PhaseTracker } from '../components/PhaseTracker';
 import { SubagentPanel } from '../components/SubagentPanel';
 import { TaskSidebar } from '../components/TaskSidebar';
 import { useAppStore } from '../store/appStore';
+import { useEventStore } from '../store/eventStore';
 import { useTaskStore } from '../store/taskStore';
 
 export function TaskWorkspacePage() {
   const { currentTaskId, setTaskId } = useAppStore();
+  const { fallbackPolling, streamHealth, startTaskStreams } = useEventStore();
   const {
     tasks,
     projects,
@@ -31,28 +32,27 @@ export function TaskWorkspacePage() {
       return;
     }
     void refreshTaskRuntime(currentTaskId);
-    const closeTaskStream = openTaskEventsStream(currentTaskId, (event) => {
-      applyStreamEvent(event);
-      if (event.type === 'task_state' || event.type === 'review_rework') {
+    const stop = startTaskStreams(currentTaskId, {
+      onEvent: (event) => {
+        applyStreamEvent(event);
+      },
+      onImportantRefresh: () => {
         void refreshTaskRuntime(currentTaskId);
-      }
-      if (event.type === 'approval_added' || event.type === 'approval_resolved') {
         void refreshAll();
       }
     });
-    const closeApprovalStream = openTaskApprovalsStream(currentTaskId, () => {
-      void refreshAll();
-    });
     const timer = window.setInterval(() => {
+      if (!fallbackPolling) {
+        return;
+      }
       void refreshTaskRuntime(currentTaskId);
       void refreshAll();
     }, 6000);
     return () => {
-      closeTaskStream();
-      closeApprovalStream();
+      stop();
       window.clearInterval(timer);
     };
-  }, [currentTaskId, refreshTaskRuntime, refreshAll, applyStreamEvent]);
+  }, [currentTaskId, refreshTaskRuntime, refreshAll, applyStreamEvent, fallbackPolling, startTaskStreams]);
 
   const currentProject = projects.find((project) => project.id === currentRuntime?.task.projectId);
 
@@ -66,10 +66,16 @@ export function TaskWorkspacePage() {
       />
       <div className="list">
         <MainThreadView runtime={currentRuntime} approvals={approvals} />
+        <div className="panel">
+          <h3>Realtime</h3>
+          <div className="muted">task stream: {streamHealth.task}</div>
+          <div className="muted">approval stream: {streamHealth.approvals}</div>
+          <div className="muted">fallback polling: {fallbackPolling ? 'on' : 'off'}</div>
+        </div>
         <ApprovalQueue approvals={approvals} onChanged={() => void refreshAll()} />
       </div>
       <div className="list">
-        <CurrentActionPanel runtime={currentRuntime} />
+        <CurrentActionPanel runtime={currentRuntime} approvalsCount={approvals.length} />
         <PhaseTracker runtime={currentRuntime} />
         <ImplementationStepsPanel runtime={currentRuntime} />
         <SubagentPanel runtime={currentRuntime} />
@@ -77,4 +83,3 @@ export function TaskWorkspacePage() {
     </div>
   );
 }
-

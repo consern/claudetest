@@ -1,16 +1,17 @@
 import { useEffect, useMemo } from 'react';
-import { openTaskAuditStream, openTaskEventsStream } from '../api/events';
 import { triggerRework } from '../api/reviews';
 import { ApprovalQueue } from '../components/ApprovalQueue';
 import { AuditTimelineView } from '../components/AuditTimelineView';
 import { DecisionBucketsView } from '../components/DecisionBucketsView';
 import { useAppStore } from '../store/appStore';
+import { useEventStore } from '../store/eventStore';
 import { useReviewStore } from '../store/reviewStore';
 import { useTaskStore } from '../store/taskStore';
 
 export function ReviewWorkspacePage() {
   const { currentTaskId, setTaskId } = useAppStore();
   const { selectedFindingId, setSelectedFindingId } = useReviewStore();
+  const { fallbackPolling, streamHealth, startTaskStreams } = useEventStore();
   const { reviews, approvals, currentRuntime, refreshAll, refreshTaskRuntime, applyStreamEvent } =
     useTaskStore();
 
@@ -23,25 +24,33 @@ export function ReviewWorkspacePage() {
       return;
     }
     void refreshTaskRuntime(currentTaskId);
-    const closeTaskStream = openTaskEventsStream(currentTaskId, (event) => {
-      applyStreamEvent(event);
-      if (event.type === 'review_rework' || event.type === 'task_state') {
+    const stop = startTaskStreams(currentTaskId, {
+      onEvent: (event) => {
+        applyStreamEvent(event);
+      },
+      onImportantRefresh: () => {
         void refreshTaskRuntime(currentTaskId);
       }
     });
-    const closeAuditStream = openTaskAuditStream(currentTaskId, () => {
-      void refreshTaskRuntime(currentTaskId);
-    });
     const timer = window.setInterval(() => {
+      if (!fallbackPolling) {
+        return;
+      }
       void refreshTaskRuntime(currentTaskId);
       void refreshAll();
     }, 8000);
     return () => {
-      closeTaskStream();
-      closeAuditStream();
+      stop();
       window.clearInterval(timer);
     };
-  }, [currentTaskId, refreshTaskRuntime, refreshAll, applyStreamEvent]);
+  }, [
+    currentTaskId,
+    refreshTaskRuntime,
+    refreshAll,
+    applyStreamEvent,
+    fallbackPolling,
+    startTaskStreams
+  ]);
 
   const selected = useMemo(() => {
     if (!currentRuntime?.workflowState) {
@@ -128,9 +137,14 @@ export function ReviewWorkspacePage() {
       </div>
       <div className="list">
         <ApprovalQueue approvals={approvals} onChanged={() => void refreshAll()} />
+        <div className="panel">
+          <h3>Realtime</h3>
+          <div className="muted">task stream: {streamHealth.task}</div>
+          <div className="muted">audit stream: {streamHealth.audit}</div>
+          <div className="muted">fallback polling: {fallbackPolling ? 'on' : 'off'}</div>
+        </div>
         <AuditTimelineView runtime={currentRuntime} />
       </div>
     </div>
   );
 }
-

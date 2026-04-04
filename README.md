@@ -37,6 +37,18 @@ pnpm dev:service
 pnpm test
 ```
 
+## Desktop 快速命令（Phase 3）
+统一入口命令：
+```bash
+pnpm desktop:dev
+pnpm desktop:build
+pnpm desktop:run
+```
+
+- `desktop:dev`：同时启动 service + desktop web（默认端口 5174）
+- `desktop:build`：构建 desktop web（含 TypeScript 检查）
+- `desktop:run`：本地预览已构建的 desktop web（等价 `desktop:preview`）
+
 ## 本地 Workbench API（Phase 1）
 启动：
 ```bash
@@ -69,12 +81,12 @@ pnpm dev:service
 
 一键桌面联调（推荐）：
 ```bash
-pnpm dev:desktop
+pnpm desktop:dev
 ```
 
 本地联调建议：
 1. 首次安装前端依赖：`pnpm --dir desktop/app install`
-2. 一键启动：`pnpm dev:desktop`
+2. 一键启动：`pnpm desktop:dev`
 3. 仅前端调试：`pnpm dev:desktop:web`
 
 前端默认请求本地服务地址：`http://127.0.0.1:4317`

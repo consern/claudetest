@@ -2,10 +2,12 @@
 
 interface Props {
   runtime?: ApiTaskRuntime;
+  approvalsCount?: number;
 }
 
-export function CurrentActionPanel({ runtime }: Props) {
+export function CurrentActionPanel({ runtime, approvalsCount = 0 }: Props) {
   const blocked = runtime?.telemetry.blockedReason;
+  const approvalRequired = approvalsCount > 0;
   return (
     <div className={`panel ${blocked ? 'panel-blocked' : ''}`}>
       <h3>Current Action</h3>
@@ -24,6 +26,9 @@ export function CurrentActionPanel({ runtime }: Props) {
         <div>Current Step: {runtime?.telemetry.activeImplementationStep ?? 'none'}</div>
         <div>Active Tool: {runtime?.telemetry.activeTool ?? 'none'}</div>
         <div>Active Subagent: {runtime?.telemetry.activeSubagent ?? 'none'}</div>
+        <div className={approvalRequired ? 'blocked-banner' : 'muted'}>
+          Approval Required: {approvalRequired ? `${approvalsCount} pending` : 'none'}
+        </div>
         <div>Last Action: {runtime?.telemetry.lastReviewDecision ?? runtime?.telemetry.lastWriteResult ?? 'none'}</div>
         <div className={blocked ? 'blocked-banner' : 'muted'}>
           Blocked Reason: {blocked ?? 'none'}

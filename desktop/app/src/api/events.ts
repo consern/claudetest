@@ -7,8 +7,21 @@ export interface StreamEnvelope {
   payload?: Record<string, unknown>;
 }
 
-function openStream(path: string, onEvent: (event: StreamEnvelope) => void): () => void {
+export type StreamHealth = 'connecting' | 'connected' | 'error' | 'closed';
+
+function openStream(
+  path: string,
+  onEvent: (event: StreamEnvelope) => void,
+  onHealth?: (health: StreamHealth) => void
+): () => void {
   const source = new EventSource(`${API_BASE}${path}`);
+  onHealth?.('connecting');
+  source.onopen = () => {
+    onHealth?.('connected');
+  };
+  source.onerror = () => {
+    onHealth?.('error');
+  };
   const handler = (event: MessageEvent<string>) => {
     try {
       const payload = JSON.parse(event.data) as StreamEnvelope;
@@ -28,28 +41,31 @@ function openStream(path: string, onEvent: (event: StreamEnvelope) => void): () 
   source.addEventListener('review_rework', handler as unknown as EventListener);
 
   return () => {
+    onHealth?.('closed');
     source.close();
   };
 }
 
 export function openTaskEventsStream(
   taskId: string,
-  onEvent: (event: StreamEnvelope) => void
+  onEvent: (event: StreamEnvelope) => void,
+  onHealth?: (health: StreamHealth) => void
 ): () => void {
-  return openStream(`/api/tasks/${taskId}/events`, onEvent);
+  return openStream(`/api/tasks/${taskId}/events`, onEvent, onHealth);
 }
 
 export function openTaskApprovalsStream(
   taskId: string,
-  onEvent: (event: StreamEnvelope) => void
+  onEvent: (event: StreamEnvelope) => void,
+  onHealth?: (health: StreamHealth) => void
 ): () => void {
-  return openStream(`/api/tasks/${taskId}/approvals/stream`, onEvent);
+  return openStream(`/api/tasks/${taskId}/approvals/stream`, onEvent, onHealth);
 }
 
 export function openTaskAuditStream(
   taskId: string,
-  onEvent: (event: StreamEnvelope) => void
+  onEvent: (event: StreamEnvelope) => void,
+  onHealth?: (health: StreamHealth) => void
 ): () => void {
-  return openStream(`/api/tasks/${taskId}/audit/stream`, onEvent);
+  return openStream(`/api/tasks/${taskId}/audit/stream`, onEvent, onHealth);
 }
-

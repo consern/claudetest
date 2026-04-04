@@ -14,6 +14,7 @@ interface TaskStore {
   reviews: Array<{ taskId: string; fixNow: number; fixLater: number; ignore: number; lifecycle: number }>;
   approvals: ApiApproval[];
   currentRuntime?: ApiTaskRuntime;
+  lastEventTs?: string;
   refreshAll: () => Promise<void>;
   refreshTaskRuntime: (taskId: string) => Promise<void>;
   applyStreamEvent: (event: StreamEnvelope) => void;
@@ -25,6 +26,7 @@ export const useTaskStore = create<TaskStore>((set) => ({
   sessions: [],
   reviews: [],
   approvals: [],
+  lastEventTs: undefined,
   refreshAll: async () => {
     const [projects, tasks, sessions, reviews, approvals] = await Promise.all([
       getProjects(),
@@ -42,11 +44,12 @@ export const useTaskStore = create<TaskStore>((set) => ({
   applyStreamEvent: (event) => {
     set((state) => {
       if (!state.currentRuntime || state.currentRuntime.task.id !== event.taskId) {
-        return state;
+        return { ...state, lastEventTs: event.timestamp };
       }
       if (event.type === 'tool_event' && typeof event.payload?.event === 'string') {
         return {
           ...state,
+          lastEventTs: event.timestamp,
           currentRuntime: {
             ...state.currentRuntime,
             toolEvents: [...state.currentRuntime.toolEvents, String(event.payload.event)].slice(-200)
@@ -56,6 +59,7 @@ export const useTaskStore = create<TaskStore>((set) => ({
       if (event.type === 'telemetry') {
         return {
           ...state,
+          lastEventTs: event.timestamp,
           currentRuntime: {
             ...state.currentRuntime,
             telemetry: {
@@ -65,7 +69,7 @@ export const useTaskStore = create<TaskStore>((set) => ({
           }
         };
       }
-      return state;
+      return { ...state, lastEventTs: event.timestamp };
     });
   }
 }));
